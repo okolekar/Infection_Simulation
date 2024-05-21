@@ -107,8 +107,7 @@ int main(int argc, char **argv){
     }
 //--------------------------------------------------------------------------------------------------------------------------------------//
     MPI_Barrier(MPI_COMM_WORLD);
-    while(time<1){
-        if(rank == 1){std::cout<<"I am entering the while loop"<<std::endl;}
+    while(time<2){
     //##################################################Reset Recover and Reimmune#################################################//
         ResetRecoverImmune(M2, r, rank, size);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -126,6 +125,7 @@ int main(int argc, char **argv){
             flag = 0;
             MPI_Iprobe(MPI_ANY_SOURCE,112,MPI_COMM_WORLD, &flag, &status); 
         }
+        std::cout<<"Rank" << rank<< " COmpleted the Probabing"<<std::endl;
 
         //##################################################Reinfection Block#################################################//
         for (int i = 0; i < r; i++){         
