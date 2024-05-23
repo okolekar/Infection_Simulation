@@ -1,5 +1,7 @@
 #include <iostream>
 #include <random>
+#include <fstream>
+#include <iomanip>
 #include "mpi.h"
 #include <unistd.h>                                                                                                      // For usleep function
 #include <algorithm>
@@ -10,6 +12,7 @@ const static int immune_time   = 3;
 const static int R             = 15;                                                                                     //Total number of rows 
 const static int c             = 15;                                                                                     //Total number of columns
 
+void printMatrixToFile(float (*matrix)[c], int rows, int cols, const std::string& filename);
 void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size);
 void Infect(float (*Mx)[c], int r, int m,int n, int rank);
 void RowCorrector2(float *row, int *index, int c);
@@ -30,6 +33,7 @@ int main(int argc, char **argv){
     float Mshare[c];
     int MshareI[c];
     MPI_Status status;
+    std::string filename = "matrix_output_rank_" + std::to_string(rank) + ".txt";
     //--------------------------------------------------------------------------------------------------------------------------------------//
 
     
@@ -63,8 +67,12 @@ int main(int argc, char **argv){
 
     //-----------------------------------------------------------------------------------------------------------------------------------//
     int time = 0;
-    //Infect(M1,r, random_infected,random_infected,rank);
-    Infect(M2,r, 4,0,rank); //For Debuging
+    Infect(M2,r, random_infected,random_infected,rank);
+    random_infected = distribution(gen);
+    Infect(M2,r, random_infected,random_infected,rank);
+    random_infected = distribution(gen);
+    Infect(M2,r, random_infected,random_infected,rank);
+    //Infect(M2,r, 4,0,rank); //For Debuging
 
     if(size>1){
         //####################################################Starting the send block###################################################//
@@ -95,7 +103,10 @@ int main(int argc, char **argv){
             MPI_Recv(Mshare, c, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD, &status);                                    //and the first row from the next rank
             RowCorrector(M2, Mshare, 0);
         } 
-    }      
+    }
+    for (int i = 0; i < r; i++){         
+            for(int j= 0; j < c; j++){
+                M1[i][j] = M2[i][j];}}
 //-----------------------------------------For debuging purpose--------------------------------------------------------------//
     if (rank == 0){std::cout<< "Printing the initial stage of the matrix" <<std::endl;}
     for(int node=0;node<size;node++){
@@ -105,9 +116,10 @@ int main(int argc, char **argv){
         }
         MPI_Barrier(MPI_COMM_WORLD);
     }
+    printMatrixToFile(M2, r, c, filename);
 //--------------------------------------------------------------------------------------------------------------------------------------//
     MPI_Barrier(MPI_COMM_WORLD);
-    while(time<2){
+    while(time<3){
     //##################################################Reset Recover and Reimmune#################################################//
         ResetRecoverImmune(M2, r, rank, size);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -115,7 +127,6 @@ int main(int argc, char **argv){
         while(flag){
             source_rank = status.MPI_SOURCE;
             MPI_Recv(MshareI, c, MPI_INT, source_rank, 112, MPI_COMM_WORLD, &status);
-            //std::cout<<"The sending source is "<<source_rank<<std::endl;
             if(source_rank == rank+1){
                 RowCorrector2( M2[r-1], MshareI, c );  //if the sender node is 1+current_node, last row will be modified 
             }
@@ -125,16 +136,16 @@ int main(int argc, char **argv){
             flag = 0;
             MPI_Iprobe(MPI_ANY_SOURCE,112,MPI_COMM_WORLD, &flag, &status); 
         }
-        std::cout<<"Rank" << rank<< " COmpleted the Probabing"<<std::endl;
+        std::cout<<"Rank" << rank<< " completed the Probing for any possible rank messages that were sent"<<std::endl;
 
         //##################################################Reinfection Block#################################################//
         for (int i = 0; i < r; i++){         
             for(int j = 0; j < c; j++){
-                if(M2[i][j]<1.0){
+                if(M1[i][j]<1.0){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
                     for(int per = 0; per < (int)(M2[i][j]*10); per++){ //per is the person surrounding the cell under consideration
                         resilience = infection_Probability_Distribution(gen);
                         if(0.2>resilience){
-                            Infect(M2,r, 3,3,rank); ////CHANGES TO BE MADE HERE ONLY TESTING NOW
+                            Infect(M2,r, i,j,rank); ////CHANGES TO BE MADE HERE ONLY TESTING NOW
                             break;
                         }}}}}
         //--------------------------------------------------------------------------------------------------------------------------------------//
@@ -182,20 +193,19 @@ int main(int argc, char **argv){
             for(int j= 0; j < c; j++){
                 M1[i][j] = M2[i][j];}}
         //-----------------------------------------------------------------------------------------------------------------------------------------//
-        time +=1;
+        time +=1; //updating the time
+	printMatrixToFile(M2,r,c,filename);
         //--------------------------------------------------------------------------------------------------------------------------------------//
         }
-        if (rank == 0){std::cout<<"Printing the recovered stage of the matrix"<<std::endl;}
+        if (rank == 0){std::cout<<"Printing the recovered stage of the matrix at time step = "<< time <<std::endl;}
         for(int node=0;node<size;node++){
             if (node == rank){
             std::cout << "The rank printing is " << rank << std::endl;
             print(M2,r);
             }
             MPI_Barrier(MPI_COMM_WORLD);
-        } 
-    
+        }
     MPI_Finalize();
-    std::cout<<"Execution Complete";
     return 0;
 }
 
@@ -396,4 +406,29 @@ void print(float (*Mp)[c], int r){
         }
         std::cout<<std::endl;
     }
+}
+
+// Function to print a matrix to a text file
+void printMatrixToFile(float (*matrix)[c], int rows, int cols, const std::string& filename) {
+    // Open the file in append mode
+    std::ofstream outFile(filename, std::ios::app);
+    if (!outFile) {
+        std::cerr << "Unable to open file " << filename << std::endl;
+        return;
+    }
+
+    // Write the matrix to the file
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+	    if(matrix[i][j]<0.1){
+		outFile << std::setw(4) << 0 << ";";
+		}
+	    else {
+            	outFile << std::setw(4) << matrix[i][j] << ";";  // Format the output as needed
+		}
+        }
+        outFile << std::endl;
+    }
+    outFile << std::endl;  // Separate matrices by an empty line
+    outFile.close();
 }
