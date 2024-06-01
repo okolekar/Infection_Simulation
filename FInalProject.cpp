@@ -59,21 +59,31 @@ int main(int argc, char **argv){
     std::random_device rd;                                                                                              // Get a random seed from the device
     std::mt19937 gen(rd());                                                                                             // Initialize the Mersenne Twister random number generator
     std::uniform_int_distribution<> distribution(0, r-1);                                                                 // Define the distribution (0 to 7 inclusive)
-    std::uniform_real_distribution<float> infection_Probability_Distribution(0.0f, 1.0f);                               
+    std::uniform_real_distribution<float> infection_Probability_Distribution(0.0f, 1.0f);
+    std::uniform_int_distribution<> distribution2(0, c-1);                               
                                                                                                                         
-    int random_infected = distribution(gen);                                                                            // Generate a random number
+    int random_infected = distribution(gen);
+    int random_infectedc = distribution2(gen);                                                                            // Generate a random number
     float resilience;
     float recovery_probability;
 
     //-----------------------------------------------------------------------------------------------------------------------------------//
     int time = 0;
-    Infect(M2,r, random_infected,random_infected,rank);
+    Infect(M2,r, random_infected,random_infectedc,rank);
     random_infected = distribution(gen);
-    Infect(M2,r, random_infected,random_infected,rank);
+    random_infectedc = distribution2(gen);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(M2[random_infected][random_infectedc]<1){
+        Infect(M2,r, random_infected, random_infectedc,rank);   
+    }
     random_infected = distribution(gen);
-    Infect(M2,r, random_infected,random_infected,rank);
+    random_infectedc = distribution2(gen);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(M2[random_infected][random_infectedc]<1){
+        Infect(M2,r, random_infected, random_infectedc,rank);   
+    }
     //Infect(M2,r, 4,0,rank); //For Debuging
-
+    MPI_Barrier(MPI_COMM_WORLD);
     if(size>1){
         //####################################################Starting the send block###################################################//
         if(rank==0){
@@ -102,20 +112,21 @@ int main(int argc, char **argv){
             RowCorrector(M2, Mshare, r-1); 
             MPI_Recv(Mshare, c, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD, &status);                                    //and the first row from the next rank
             RowCorrector(M2, Mshare, 0);
-        } 
+        }
+        MPI_Barrier(MPI_COMM_WORLD); 
     }
     for (int i = 0; i < r; i++){         
             for(int j= 0; j < c; j++){
-                M1[i][j] = M2[i][j];}}
+                M1[i][j] = M2[i][j];}}        //Copying the infected state
 //-----------------------------------------For debuging purpose--------------------------------------------------------------//
     if (rank == 0){std::cout<< "Printing the initial stage of the matrix" <<std::endl;}
-    for(int node=0;node<size;node++){
+    /*for(int node=0;node<size;node++){
         if (node == rank){
         std::cout << "The rank printing is " << rank << std::endl;
         print(M2,r);
         }
         MPI_Barrier(MPI_COMM_WORLD);
-    }
+    }*/
     printMatrixToFile(M2, r, c, filename);
 //--------------------------------------------------------------------------------------------------------------------------------------//
     MPI_Barrier(MPI_COMM_WORLD);
@@ -181,30 +192,30 @@ int main(int argc, char **argv){
             } 
         }
         if (rank == 0){std::cout<<"Printing the reinfected stage of the matrix at time "<< time <<std::endl;}
-        for(int node=0;node<size;node++){
+        /*for(int node=0;node<size;node++){
             if (node == rank){
             std::cout << "The rank printing is " << rank << std::endl;
             print(M2,r);
             }
             MPI_Barrier(MPI_COMM_WORLD);
-        }
+        }*/
         //####################################################Adding the current state to history###################################################//
         for (int i = 0; i < r; i++){         
             for(int j= 0; j < c; j++){
                 M1[i][j] = M2[i][j];}}
         //-----------------------------------------------------------------------------------------------------------------------------------------//
         time +=1; //updating the time
-	printMatrixToFile(M2,r,c,filename);
+	    printMatrixToFile(M2,r,c,filename);
         //--------------------------------------------------------------------------------------------------------------------------------------//
         }
-        if (rank == 0){std::cout<<"Printing the recovered stage of the matrix at time step = "<< time <<std::endl;}
-        for(int node=0;node<size;node++){
+        //if (rank == 0){std::cout<<"Printing the recovered stage of the matrix at time step = "<< time <<std::endl;}
+        /*for(int node=0;node<size;node++){
             if (node == rank){
             std::cout << "The rank printing is " << rank << std::endl;
             print(M2,r);
             }
             MPI_Barrier(MPI_COMM_WORLD);
-        }
+        }*/
     MPI_Finalize();
     return 0;
 }
@@ -377,19 +388,23 @@ void Infect(float (*Mx)[c], int r, int m,int n, int rank){
     }
 
     //#pragma omp parallel for private(i,j) shared (tr,tc,er,ec,Mx)
+    std::cout<<"The rank is "<<rank<<" and we are in the infection regime with the infected input as "<< m<< " "<< n<<std::endl;
+    MPI_Barrier(MPI_COMM_WORLD);
     for(int i=tr;i<er;i++){
         for(int j=tc;j<ec;j++){
             if (Mx[i][j] < 1 ){
                 Mx[i][j] = Mx[i][j] + 0.1;
+                std::cout<<Mx[i][j]<<" "<<rank<<" ";
                 //Mx->M[i][j] = 0.2;
                 //std::cout<<"I am adding 0.2 at position "<<i<<" "<<j<<std::endl;                                      //For Debugging purpose
             } 
         }
+        std::cout<<std::endl;
     }
     if(Mx[m][n]<=1){
         Mx[m][n] = 1;
     }
-
+    //print(Mx,r);
 }
 
 void print(float (*Mp)[c], int r){
