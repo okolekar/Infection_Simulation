@@ -7,10 +7,11 @@
 #include <algorithm>
 
 
-const static float q           = 0.3;
-const static int immune_time   = 3;
-const static int R             = 15;                                                                                     //Total number of rows 
-const static int c             = 15;                                                                                     //Total number of columns
+const static float q                        = 0.3;
+const static float probabilityOfInfection   = 0.2;
+const static int immune_time                = 3;
+const static int R                          = 15;                                                                                     //Total number of rows 
+const static int c                          = 15;                                                                                     //Total number of columns
 
 void printMatrixToFile(float (*matrix)[c], int rows, int cols, const std::string& filename);
 void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size);
@@ -21,7 +22,6 @@ void print(float (*Mp)[c], int r);
 
 
 int main(int argc, char **argv){
-
     int rank, size;
     MPI_Init(&argc, &argv);
     int r;
@@ -29,7 +29,9 @@ int main(int argc, char **argv){
     int source_rank; //used to check which rank is sending the buffer
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
+    if(rank==0){
+        std::cout<<"The Simulation started with total ranks = "<< size <<std::endl;
+    }
     float Mshare[c];
     int MshareI[c];
     MPI_Status status;
@@ -69,13 +71,13 @@ int main(int argc, char **argv){
 
     //---------------------------------------------------------------Initial Infection-------------------------------------------------------//
     int time = 0;
-    Infect(M2,r, 2,2,rank);
+    Infect(M2,r, random_infected, random_infectedc,rank);
     random_infected = distribution(gen);
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
 
     if(M2[random_infected][random_infectedc]<1){
-        Infect(M2,r, 0, 4,rank);   
+        Infect(M2, r, random_infected, random_infectedc,rank);   
     }
     
     random_infected = distribution(gen);
@@ -83,7 +85,7 @@ int main(int argc, char **argv){
     MPI_Barrier(MPI_COMM_WORLD);
 
     if(M2[random_infected][random_infectedc]<1){
-        Infect(M2,r, r-1, 5,rank);   
+        Infect(M2,r, random_infected, random_infectedc,rank);   
     }
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -118,7 +120,6 @@ int main(int argc, char **argv){
             RowCorrector(M2, Mshare, 0);
         }
         MPI_Barrier(MPI_COMM_WORLD);
-        //std::cout<<"I am rank " << rank << " and I finished the initial stage of infecting and also the send and receive command" <<std::endl;
     }
     for (int i = 0; i < r; i++){         
             for(int j= 0; j < c; j++){
@@ -127,8 +128,6 @@ int main(int argc, char **argv){
     if (rank == 0){std::cout<< "Printing the initial stage of the matrix" <<std::endl;}
     printMatrixToFile(M2, r, c, filename);
     MPI_Barrier(MPI_COMM_WORLD);
-
-    //CODE RUNS PERFECT UNTILL HERE
 //--------------------------------------------------------------------------------------------------------------------------------------//    
     while(time<3){
     //##################################################Reset Recover and Reimmune#################################################//
@@ -164,9 +163,6 @@ int main(int argc, char **argv){
                 }
             }
         }
-        //std::cout<<"Rank" << rank<< " completed the Probing for any possible rank messages that were sent"<<std::endl;
-        //std::cout<<"Rank" << rank<< " Entering the reinfection stage for time = "<< time <<std::endl;
-        //CODE RUNS PERFECT UNTILL HERE
         MPI_Barrier(MPI_COMM_WORLD);
         //##################################################Reinfection Block#################################################//
         for (int i = 0; i < r; i++){         
@@ -174,13 +170,12 @@ int main(int argc, char **argv){
                 if(M1[i][j]<1.0){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
                     for(int per = 0; per < (int)(M2[i][j]*10); per++){ //per is the person surrounding the cell under consideration
                         resilience = infection_Probability_Distribution(gen);
-                        if(0.2>resilience){
-                            Infect(M2,r, i,j,rank); ////CHANGES TO BE MADE HERE ONLY TESTING NOW
+                        if(probabilityOfInfection > resilience){
+                            Infect(M2,r, i,j,rank);
                             break;
                         }}}}}
         MPI_Barrier(MPI_COMM_WORLD);
         //--------------------------------------------------------------------------------------------------------------------------------------//
-        //std::cout<<"Rank" << rank<< " reinfection stage completed for the time step "<< time <<std::endl;
         if(size>1){
             //####################################################Starting the send block###################################################//
             if(rank==0){
@@ -199,7 +194,7 @@ int main(int argc, char **argv){
             if(rank==0){
                 MPI_Recv(Mshare, c, MPI_FLOAT, 1, 112, MPI_COMM_WORLD, &status);                                          //Rank 0 receives the first row from the rank 1
                 RowCorrector(M2, Mshare, r-1);
-            }
+            }   
             else if(rank==size-1){                                          
                 MPI_Recv(Mshare, c, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD, &status);                                     //Last rank receives the last row from the second last rank
                 RowCorrector(M2, Mshare, 0);
@@ -218,10 +213,15 @@ int main(int argc, char **argv){
                 M1[i][j] = M2[i][j];}}
         //-----------------------------------------------------------------------------------------------------------------------------------------//
         time +=1; //updating the time
+        if (rank == 0){std::cout<< "Printing the stage of the matrix at time t = "<< time <<std::endl;}
 	    printMatrixToFile(M2,r,c,filename);
         //--------------------------------------------------------------------------------------------------------------------------------------//
         }
     MPI_Finalize();
+    if(rank==0){
+        std::cout<<"The Simulation completed with no errors."<<std::endl;
+        std::cout<<"All the necessary files have been saved successfully."<<std::endl;
+    }
     return 0;
 }
 
@@ -248,9 +248,6 @@ void RowCorrector(float (*Mx)[c], float (*Mcr), int cRow){
 void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){ 
     int lastRowRecover[c+1];
     int firstRowRecover[c+1];
-    if (rank == 1){
-        std::cout<<"In ResetrecoverReimmunie RRI The rank 1 matrix at position M[0,3] I have got " << Mx[0][3] << " The state is before infection " << std::endl;
-    }               //for debugging
     std::fill(lastRowRecover, lastRowRecover + c + 1, 0);
     std::fill(firstRowRecover, firstRowRecover + c + 1, 0); 
     int lsize = 0;
@@ -263,7 +260,7 @@ void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){
         for (int j=0;j<c;j++){
             std::random_device rd;
             std::mt19937 gen(rd());
-            recovery_probability = 0.8;//infection_Probability_Distribution(gen);
+            recovery_probability = infection_Probability_Distribution(gen);
             if(recovery_probability > q){
                 flag = 1;
             }
@@ -311,9 +308,6 @@ void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){
             if (Mx[i][j] == immune_time+1){
                 Mx[i][j] = 0.0;                                                                                          //Wanes the immunity and makes the cell vulnerable for infection. 
             }
-            if (Mx[i][j] > immune_time+1){
-                std::cout<<"WARNING: the cell value at the position ("<< i << ", "<<j<<") is invalid."<< std::endl;      //Protection against false values.
-            }
         }
     }
     //############################IF size>1 this is missing************************************
@@ -333,10 +327,6 @@ void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){
             ////I have an Idea we do this, at the end of every first row matrix we will enter the flag. with a number instead of an array 
         }
     }
-    if (rank == 1){
-        std::cout<<"In resetrecover RRR The rank 1 matrix at position M[0,3] I have set it to " << Mx[0][3] << std::endl;
-    } 
-    //std::cout<<"I Recovery done and I am rank " << rank <<std::endl;
 }
 
 void RowCorrector2(float *row, int *index, int c, int rank){
@@ -361,7 +351,6 @@ void RowCorrector2(float *row, int *index, int c, int rank){
             }
         }
         else {
-            std::cout<<"We are in the else BLock"<<std::endl;
             if(row[index[i]-1] < 1.0 && row[index[i]-1] > 0.0){
                 row[index[i]-1] = row[index[i]-1] - 0.1;
             }
@@ -403,25 +392,16 @@ void Infect(float (*Mx)[c], int r, int m,int n, int rank){
     }
 
     //#pragma omp parallel for private(i,j) shared (tr,tc,er,ec,Mx)
-    //std::cout<<"The rank is "<<rank<<" and we are in the infection regime with the infected input as "<< m<< " "<< n<<std::endl;
-    if (rank == 1){
-        std::cout<<"The rank 1 matrix in Infect function at position M[0,3] I have got " << Mx[0][3] << "The state is before infection " << std::endl;
-    }               //for debugging
     for(int i=tr;i<er;i++){
         for(int j=tc;j<ec;j++){
             if (Mx[i][j] < 1 ){
                 Mx[i][j] = Mx[i][j] + 0.1;
-                //std::cout<<Mx[i][j]<<" "<<rank<<" ";          //For Debugging purpose
             } 
         }
-        //std::cout<<std::endl;
     }
     if(Mx[m][n]<=1){
         Mx[m][n] = 1;
     }
-    if (rank == 1){
-        std::cout<<"The rank 1 matrix in the infect regime at position M[0,3] I have set it to " << Mx[0][3] << std::endl;
-    }               //for debugging
 }
 
 void print(float (*Mp)[c], int r){
