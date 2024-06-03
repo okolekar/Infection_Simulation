@@ -3,30 +3,86 @@
 #include <fstream>
 #include <iomanip>
 #include "mpi.h"
-#include <unistd.h>                                                                                                      // For usleep function
 #include <algorithm>
 
-
+/*
+======================================================= ****Universal Constants**** =======================================================
+-------------------------------------------------------------------------------------------------------------------------------------------
+The below defined are some of the universal constants used in this Program which are common to all the Ranks.
+-------------------------------------------------------------------------------------------------------------------------------------------
+    q                       = Threshold for recovery of the infected cell.
+    probabilityOfInfection  = Threshold for a cell to get infected due to neighbour.
+    immune_time             = Time steps untill which the cell is immune to the infection after it was once recovered
+    R                       = Total number of rows of the grid under consideration
+    c                       = Total number of columns of the grid under consideration
+___________________________________________________________________________________________________________________________________________    
+*/
 const static float q                        = 0.3;
 const static float probabilityOfInfection   = 0.2;
 const static int immune_time                = 3;
-const static int R                          = 15;                                                                                     //Total number of rows 
-const static int c                          = 15;                                                                                     //Total number of columns
+const static int R                          = 15; 
+const static int c                          = 15;                                                                                     
 
+/*
+======================================================= ****Function Declaration**** ======================================================
+-------------------------------------------------------------------------------------------------------------------------------------------
+The below defined are some of the universal fuction used in this Program which are common to all the Ranks.
+For specific details about a specific function please see the description in the function itself.
+-------------------------------------------------------------------------------------------------------------------------------------------
+    printMatrixToFile  = Prints the matrix of the specific rank in a specific text file with the name matrix_output_rank_<rank_number>.txt.
+            Required inputs: - The memory address of the 2D grid, number of rank specific rows, total number of columns and filename.      
+    ---------------------------------------------------------------------------------------------------------------------------------------
+    ResetRecoverImmune = Runs the recovery of the infected cells and sets the immunity on the recovered cells.
+            Required inputs: - The memory address of the 2D grid, number of rank specific rows, the rank number, total number of ranks.
+    ---------------------------------------------------------------------------------------------------------------------------------------
+    Infect             = Sets the infection on a cell, if the probability of infection is greater than given probabilityOfInfection.
+            Required inputs: - The memory address of the 2D grid, number of rank specific rows, row number of infected cell, 
+                               column number of infected cell, the rank number.
+    ---------------------------------------------------------------------------------------------------------------------------------------
+    RowCorrector2      = Corrects the first and the last row of the current matrix after recovery depending on the current rank number,  
+                         based on last and first row of previous and next rank matrix respectively.
+            Required inputs: - The memory address of first/last row of the 2D grid, array with the information on recovery location, 
+                               total number of columns, the rank number.
+    ---------------------------------------------------------------------------------------------------------------------------------------
+    RowCorrector       = Corrects the first and the last row of the current matrix after infection depending on the current rank number,  
+                         based on last and first row of previous and next rank matrix respectively.
+            Required inputs: - The memory address of the 2D grid, array with the information on first/last row of next/previous rank grid, 
+                               total number of columns.
+___________________________________________________________________________________________________________________________________________    
+*/
 void printMatrixToFile(float (*matrix)[c], int rows, int cols, const std::string& filename);
 void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size);
 void Infect(float (*Mx)[c], int r, int m,int n, int rank);
 void RowCorrector2(float *row, int *index, int c, int rank);
 void RowCorrector(float (*Mx)[c], float (*Mcr), int cRow);
-void print(float (*Mp)[c], int r);
-
+//____________________________________________________ **** End of Declarations **** _____________________________________________________//
+//_______________________________________________________________________________________________________________________________________//
 
 int main(int argc, char **argv){
+/*
+======================================================== ****The Main Function**** ========================================================
+-------------------------------------------------------------------------------------------------------------------------------------------
+The start point of our simulation code.
+-------------------------------------------------------------------------------------------------------------------------------------------
+  Variables Used: -
+  -----------------
+    rank                -> Current rank number
+    size                -> Total number of ranks
+    r                   -> Number of rows alloted to this rank from the total rows of the rows in the Global Matrix
+    M1                  -> State of the cells in the previous time step
+    M2                  -> State of the cells in the current time step
+    Mshare              -> Stores the row sent row from another rank after infection, used in the MPI_Recv function call
+    MshareI             -> Stores the row sent row from another rank after recovery, used in the MPI_Recv function call
+    random_infected     -> Random row number for initial infection
+    random_infectedc    -> Random column number for initial infection
+    resilience          -> Resilience against infection
+    time                -> Current time step. 
+
+___________________________________________________________________________________________________________________________________________    
+*/
     int rank, size;
     MPI_Init(&argc, &argv);
     int r;
-    int flag = 0; //used for checking if there is any process that is sending information to this rank
-    int source_rank; //used to check which rank is sending the buffer
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     if(rank==0){
@@ -38,16 +94,14 @@ int main(int argc, char **argv){
     std::string filename = "matrix_output_rank_" + std::to_string(rank) + ".txt";
     //--------------------------------------------------------------------------------------------------------------------------------------//
 
-    
     if(rank==size-1){
         r = R/size + R%size;
     }
     else{
         r = R/size;
-    }
-    
-    float M1[r][c]; //->is the matrix at the previous time step
-    float M2[r][c]; //->is the matrix at the current time step
+    } 
+    float M1[r][c]; 
+    float M2[r][c]; 
 
     //------------------------------------------------Initilizing the matrices---------------------------------------------------------------//
     for(int i=0;i<r;i++){
@@ -58,72 +112,70 @@ int main(int argc, char **argv){
     }
     //--------------------------------------------------------------------------------------------------------------------------------------//
 
-    std::random_device rd;                                                                                              // Get a random seed from the device
-    std::mt19937 gen(rd());                                                                                             // Initialize the Mersenne Twister random number generator
-    std::uniform_int_distribution<> distribution(0, r-1);                                                                 // Define the distribution (0 to 7 inclusive)
+    std::random_device rd;                                                                // Get a random seed from the device
+    std::mt19937 gen(rd());                                                               // Initialize the Mersenne Twister random number generator
+    std::uniform_int_distribution<> distribution(0, r-1);                                 // Define the distribution (0 to 7 inclusive)
     std::uniform_real_distribution<float> infection_Probability_Distribution(0.0f, 1.0f);
     std::uniform_int_distribution<> distribution2(0, c-1);                               
                                                                                                                         
     int random_infected = distribution(gen);
-    int random_infectedc = distribution2(gen);                                                                            // Generate a random number
+    int random_infectedc = distribution2(gen);                                            // Generate a random number
     float resilience;
-    float recovery_probability;
 
-    //---------------------------------------------------------------Initial Infection-------------------------------------------------------//
+    //---------------------------------------------------------------Initial Infection-----------------------------------------------------//
     int time = 0;
     Infect(M2,r, random_infected, random_infectedc,rank);
     random_infected = distribution(gen);
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
-
+    //----------------------------------------------------------//
     if(M2[random_infected][random_infectedc]<1){
         Infect(M2, r, random_infected, random_infectedc,rank);   
     }
-    
+    //----------------------------------------------------------//
     random_infected = distribution(gen);
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
-
+    //----------------------------------------------------------//
     if(M2[random_infected][random_infectedc]<1){
         Infect(M2,r, random_infected, random_infectedc,rank);   
     }
     MPI_Barrier(MPI_COMM_WORLD);
-
-    //-----------------------------------------------------------------------------------------------------------------------------------//
+    //----------------------------------------------------------------End of Initial Infection------------------------------------------//
     if(size>1){
         //####################################################Starting the send block###################################################//
         if(rank==0){
-            MPI_Send(&M2[r-1][0], c,MPI_FLOAT,1,112,MPI_COMM_WORLD);                                                   //Rank 0 sends the last row to the rank 1
+            MPI_Send(&M2[r-1][0], c,MPI_FLOAT,1,112,MPI_COMM_WORLD);       //Rank 0 sends the last row to the rank 1
         }
         else if(rank==size-1){                                          
-            MPI_Send(&M2[0][0], c,MPI_FLOAT,size-2,112,MPI_COMM_WORLD);                                                //Last rank sends the first row to the second last rank
+            MPI_Send(&M2[0][0], c,MPI_FLOAT,size-2,112,MPI_COMM_WORLD);    //Last rank sends the first row to the second last rank
         }
         else {
-            MPI_Send(&M2[r-1][0], c,MPI_FLOAT,rank+1,112,MPI_COMM_WORLD);                                              //Inbetween ranks sends first row to the previous rank 
-            MPI_Send(&M2[0][0], c,MPI_FLOAT,rank-1,112,MPI_COMM_WORLD);                                                //and the last row to the next rank
+            MPI_Send(&M2[r-1][0], c,MPI_FLOAT,rank+1,112,MPI_COMM_WORLD);  //Inbetween ranks sends first row to the previous rank 
+            MPI_Send(&M2[0][0], c,MPI_FLOAT,rank-1,112,MPI_COMM_WORLD);    //and the last row to the next rank
         }
-        MPI_Barrier(MPI_COMM_WORLD);                                                                                   //Barrier to ensure all ranks have finished sending the rows.
+        MPI_Barrier(MPI_COMM_WORLD);                                       //Barrier to ensure all ranks have finished sending the rows.
 
         //##################################################Starting the receive block#################################################//
         if(rank==0){
-            MPI_Recv(Mshare, c, MPI_FLOAT, 1, 112, MPI_COMM_WORLD, &status);                                          //Rank 0 receives the first row from the rank 1
+            MPI_Recv(Mshare, c, MPI_FLOAT, 1, 112, MPI_COMM_WORLD, &status);      //Rank 0 receives the first row from the rank 1
             RowCorrector(M2, Mshare, r-1);
         }
         else if(rank==size-1){                                          
-            MPI_Recv(Mshare, c, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD, &status);                                     //Last rank receives the last row from the second last rank
+            MPI_Recv(Mshare, c, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD, &status); //Last rank receives the last row from the second last rank
             RowCorrector(M2, Mshare, 0);
         }                                                                                                               
         else {                                                                                                          
-            MPI_Recv(Mshare, c, MPI_FLOAT, rank+1, 112, MPI_COMM_WORLD, &status);                                    //Inbetween ranks receives last row from the previous rank
+            MPI_Recv(Mshare, c, MPI_FLOAT, rank+1, 112, MPI_COMM_WORLD, &status); //Inbetween ranks receives last row from the previous rank
             RowCorrector(M2, Mshare, r-1); 
-            MPI_Recv(Mshare, c, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD, &status);                                    //and the first row from the next rank
+            MPI_Recv(Mshare, c, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD, &status); //and the first row from the next rank
             RowCorrector(M2, Mshare, 0);
         }
         MPI_Barrier(MPI_COMM_WORLD);
     }
     for (int i = 0; i < r; i++){         
             for(int j= 0; j < c; j++){
-                M1[i][j] = M2[i][j];}}        //Copying the infected state
+                M1[i][j] = M2[i][j];}}                                           //Copying the infected state
 //-----------------------------------------For debuging purpose--------------------------------------------------------------//
     if (rank == 0){std::cout<< "Printing the initial stage of the matrix" <<std::endl;}
     printMatrixToFile(M2, r, c, filename);
@@ -401,22 +453,6 @@ void Infect(float (*Mx)[c], int r, int m,int n, int rank){
     }
     if(Mx[m][n]<=1){
         Mx[m][n] = 1;
-    }
-}
-
-void print(float (*Mp)[c], int r){
-    float cell_value;
-    for (int i =0; i< r;i++){
-        for (int j =0; j<c;j++){
-            if (Mp[i][j] < 0.001){
-                cell_value = 0.0;
-                } 
-            else {
-                cell_value = Mp[i][j];
-                }
-            std::cout<<"    "<< cell_value <<"    ";
-        }
-        std::cout<<std::endl;
     }
 }
 
