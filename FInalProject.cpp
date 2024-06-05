@@ -129,16 +129,16 @@ ________________________________________________________________________________
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
     //----------------------------------------------------------//
-    if(M2[random_infected][random_infectedc]<1){
-        Infect(M2, r, random_infected, random_infectedc,rank);   
+    if(M2[r-1][1]<1){
+        Infect(M2, r, r-1, 1,rank);   
     }
     //----------------------------------------------------------//
     random_infected = distribution(gen);
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
     //----------------------------------------------------------//
-    if(M2[random_infected][random_infectedc]<1){
-        Infect(M2,r, random_infected, random_infectedc,rank);   
+    if(M2[r-1][2]<1){
+        Infect(M2,r, r-1, 2,rank);   
     }
     MPI_Barrier(MPI_COMM_WORLD);
     //----------------------------------------------------------------End of Initial Infection------------------------------------------//
@@ -181,7 +181,7 @@ ________________________________________________________________________________
     printMatrixToFile(M2, r, c, filename);
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------------------------------------------------------------------------//    
-    while(time<3){
+    while(time<1){
     //##################################################Reset Recover and Reimmune#################################################//
         ResetRecoverImmune(M2, r, rank, size);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -194,6 +194,7 @@ ________________________________________________________________________________
             }
             else if(rank == size-1){
                 MPI_Recv(MshareI, c+1, MPI_INT,size-2,112,MPI_COMM_WORLD,&status);
+                //RowCorrector2(M2[0], MshareI, c, rank);
                 if(MshareI[c] != 0){
                     RowCorrector2(M2[0], MshareI, c, rank);
                 }
@@ -201,17 +202,17 @@ ________________________________________________________________________________
             else{
                 MPI_Recv(MshareI, c+1, MPI_INT,rank-1,112,MPI_COMM_WORLD,&status);
                 if(MshareI[c] == 1){
-                    RowCorrector2(M2[0], MshareI, c, rank);
+                    RowCorrector2(M2[r-1], MshareI, c, rank);
                 }
                 else if(MshareI[c] == 2){
-                    RowCorrector2(M2[r-1], MshareI, c, rank);
+                    RowCorrector2(M2[0], MshareI, c, rank);
                 }
                 MPI_Recv(MshareI, c+1, MPI_INT,rank+1,112,MPI_COMM_WORLD,&status);
                 if(MshareI[c] == 1){
-                    RowCorrector2(M2[0], MshareI, c, rank);
+                    RowCorrector2(M2[r-1], MshareI, c, rank);
                 }
                 else if(MshareI[c] == 2){
-                    RowCorrector2(M2[r-1], MshareI, c, rank);
+                    RowCorrector2(M2[0], MshareI, c, rank);
                 }
             }
         }
@@ -227,6 +228,7 @@ ________________________________________________________________________________
                             break;
                         }}}}}
         MPI_Barrier(MPI_COMM_WORLD);
+        printMatrixToFile(M2,r,c,filename);
         //--------------------------------------------------------------------------------------------------------------------------------------//
         if(size>1){
             //####################################################Starting the send block###################################################//
@@ -324,7 +326,7 @@ void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){
                 if (Mx[i][j] == 1){
                     if(rank == 0 && i==r-1){
                         lastRowRecover[lsize++] = j; //Adding the column which was recovered
-                        lastRowRecover[c] = 1;
+                        lastRowRecover[c] = 2;
                     }
                     else if(rank == size-1 && i== 0){
                         firstRowRecover[fsize++] = j; //Adding the column which was recovered
@@ -399,7 +401,7 @@ void RowCorrector2(float *row, int *index, int c, int rank){
                 row[index[i]] = row[index[i]] - 0.1;
             }
             if(row[index[i]-1] < 1.0 && row[index[i]-1] > 0.0){
-                row[index[i]-1] = row[index[i]] - 0.1;
+                row[index[i]-1] = row[index[i]-1] - 0.1;
             }
         }
         else {
