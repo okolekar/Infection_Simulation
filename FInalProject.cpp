@@ -71,8 +71,8 @@ The start point of our simulation code.
     r                   -> Number of rows alloted to this rank from the total rows of the rows in the Global Matrix
     M1                  -> State of the cells in the previous time step
     M2                  -> State of the cells in the current time step
-    Mshare              -> Stores the row sent row from another rank after infection, used in the MPI_Recv function call
-    MshareI             -> Stores the row sent row from another rank after recovery, used in the MPI_Recv function call
+    Mshare              -> Stores the row sent from another rank after infection, used in the MPI_Recv function call
+    MshareI             -> Stores the row sent from another rank after recovery, used in the MPI_Recv function call
     random_infected     -> Random row number for initial infection
     random_infectedc    -> Random column number for initial infection
     resilience          -> Resilience against infection
@@ -88,8 +88,8 @@ ________________________________________________________________________________
     if(rank==0){
         std::cout<<"The Simulation started with total ranks = "<< size <<std::endl;
     }
-    float Mshare[c];
-    int MshareI[c];
+    float Mshare[c+1];
+    int MshareI[c+1];
     MPI_Status status;
     std::string filename = "matrix_output_rank_" + std::to_string(rank) + ".txt";
     //--------------------------------------------------------------------------------------------------------------------------------------//
@@ -121,6 +121,7 @@ ________________________________________________________________________________
     int random_infected = distribution(gen);
     int random_infectedc = distribution2(gen);                                            // Generate a random number
     float resilience;
+    int reInfectionFlag[2] = {-1,-1};                                                       // Flag used to check if there was a new infection in the first or the last row during the reinfection stage.
 
     //---------------------------------------------------------------Initial Infection-----------------------------------------------------//
     int time = 0;
@@ -194,7 +195,6 @@ ________________________________________________________________________________
             }
             else if(rank == size-1){
                 MPI_Recv(MshareI, c+1, MPI_INT,size-2,112,MPI_COMM_WORLD,&status);
-                //RowCorrector2(M2[0], MshareI, c, rank);
                 if(MshareI[c] != 0){
                     RowCorrector2(M2[0], MshareI, c, rank);
                 }
@@ -225,39 +225,74 @@ ________________________________________________________________________________
                         resilience = infection_Probability_Distribution(gen);
                         if(probabilityOfInfection > resilience){
                             Infect(M2,r, i,j,rank);
+                            if(i==0){
+                                reInfectionFlag[0] = r-1;
+                                std::cout<<"Changes in row 0 detected setting reInfectionFlag[0] = "<<r-1<<" in the rank "<< rank<<std::endl;
+                            }
+                            else if(i==r-1){
+                                reInfectionFlag[1] = 0;
+                                std::cout<<"Changes in row r-1 detected setting reInfectionFlag[1] = "<<0<<" in the rank "<< rank<<std::endl;
+                            }
                             break;
                         }}}}}
         MPI_Barrier(MPI_COMM_WORLD);
-        printMatrixToFile(M2,r,c,filename);
         //--------------------------------------------------------------------------------------------------------------------------------------//
         if(size>1){
             //####################################################Starting the send block###################################################//
             if(rank==0){
-                MPI_Send(&M2[r-1][0], c,MPI_FLOAT,1,112,MPI_COMM_WORLD);                                                   //Rank 0 sends the last row to the rank 1
+                std::copy(std::begin(M2[r-1]), std::end(M2[r-1]), std::begin(Mshare));
+                Mshare[c] = reInfectionFlag[1];
+                MPI_Send(&Mshare, c+1, MPI_FLOAT, 1, 112, MPI_COMM_WORLD);                                                   //Rank 0 sends the last row to the rank 1
+                reInfectionFlag[1] = -1;
             }
-            else if(rank==size-1){                                          
-                MPI_Send(&M2[0][0], c,MPI_FLOAT,size-2,112,MPI_COMM_WORLD);                                                //Last rank sends the first row to the second last rank
+            else if(rank==size-1){
+                std::copy(std::begin(M2[0]), std::end(M2[0]), std::begin(Mshare));
+                Mshare[c] = reInfectionFlag[0];                                          
+                MPI_Send(&Mshare, c+1, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD);                                                //Last rank sends the first row to the second last rank
+                reInfectionFlag[1] = -1;
             }
             else {
-                MPI_Send(&M2[r-1][0], c,MPI_FLOAT,rank+1,112,MPI_COMM_WORLD);                                              //Inbetween ranks sends first row to the previous rank 
-                MPI_Send(&M2[0][0], c,MPI_FLOAT,rank-1,112,MPI_COMM_WORLD);                                                //and the last row to the next rank
+                std::copy(std::begin(M2[r-1]), std::end(M2[r-1]), std::begin(Mshare));
+                Mshare[c] = reInfectionFlag[1];
+                MPI_Send(&Mshare, c+1, MPI_FLOAT, rank+1, 112, MPI_COMM_WORLD);                                              //Inbetween ranks sends first row to the previous rank 
+                reInfectionFlag[1] = -1;
+                std::copy(std::begin(M2[0]), std::end(M2[0]), std::begin(Mshare));
+                Mshare[c] = reInfectionFlag[0];
+                MPI_Send(&Mshare, c+1, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD);                                                //and the last row to the next rank
+                reInfectionFlag[0] = -1;
             }
             MPI_Barrier(MPI_COMM_WORLD);                                                                                   //Barrier to ensure all ranks have finished sending the rows.
 
             //##################################################Starting the receive block#################################################//
             if(rank==0){
-                MPI_Recv(Mshare, c, MPI_FLOAT, 1, 112, MPI_COMM_WORLD, &status);                                          //Rank 0 receives the first row from the rank 1
-                RowCorrector(M2, Mshare, r-1);
+                std::cout<<"The rank 0 entered the recieve block of reinfection "<<std::endl;
+                MPI_Recv(Mshare, c+1, MPI_FLOAT, 1, 112, MPI_COMM_WORLD, &status);                                          //Rank 0 receives the first row from the rank 1
+                std::cout<<"The rank 0 gets Mshare[0] as "<< Mshare[c] <<std::endl;
+                if(Mshare[c]>0){
+                    std::cout<<"Rank"<< rank<<" recieved flag as "<< Mshare[c] << ". Hence sharing that row." <<std::endl;
+                    RowCorrector(M2, Mshare, Mshare[c]);
+                }
             }   
-            else if(rank==size-1){                                          
-                MPI_Recv(Mshare, c, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD, &status);                                     //Last rank receives the last row from the second last rank
-                RowCorrector(M2, Mshare, 0);
+            else if(rank==size-1){  
+                std::cout<<"The rank 2 entered the recieve block of reinfection "<<std::endl;                                        
+                MPI_Recv(Mshare, c+1, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD, &status);                                     //Last rank receives the last row from the second last rank
+                std::cout<<"The rank 2 gets Mshare[0] as "<< Mshare[c] <<std::endl;
+                if(Mshare[c]>0){
+                    std::cout<<"Rank"<< rank<<" recieved flag as "<< Mshare[c] << ". Hence sharing that row." <<std::endl;
+                    RowCorrector(M2, Mshare, Mshare[c]);
+                }
             }                                                                                                               
             else {                                                                                                          
-                MPI_Recv(Mshare, c, MPI_FLOAT, rank+1, 112, MPI_COMM_WORLD, &status);                                    //Inbetween ranks receives last row from the previous rank
-                RowCorrector(M2, Mshare, r-1); 
-                MPI_Recv(Mshare, c, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD, &status);                                    //and the first row from the next rank
-                RowCorrector(M2, Mshare, 0);
+                MPI_Recv(Mshare, c+1, MPI_FLOAT, rank+1, 112, MPI_COMM_WORLD, &status);                                    //Inbetween ranks receives last row from the previous rank
+                if(Mshare[c]>0){
+                    std::cout<<"Rank"<< rank<<" recieved flag as "<< Mshare[c] << ". Hence sharing that row." <<std::endl;
+                    RowCorrector(M2, Mshare, Mshare[c]);
+                } 
+                MPI_Recv(Mshare, c+1, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD, &status);                                    //and the first row from the next rank
+                if(Mshare[c]>0){
+                    std::cout<<"Rank"<< rank<<" recieved flag as "<< Mshare[c] << ". Hence sharing that row." <<std::endl;
+                    RowCorrector(M2, Mshare, Mshare[c]);
+                }
             } 
         }
         MPI_Barrier(MPI_COMM_WORLD);
@@ -413,6 +448,41 @@ void RowCorrector2(float *row, int *index, int c, int rank){
             }
             if(row[index[i]+1] < 1.0 && row[index[i]+1] > 0.0){
                 row[index[i]+1] = row[index[i]+1] - 0.1;
+            }
+        }
+    }
+}
+
+void RowCorrector3(float *row, int *index, int c, int rank){
+    for(int i=0;i<c;i++){
+        if (i>0 && index[i] == 0){
+            break;
+        }
+        if(index[i] == 0){
+            if(row[index[i]] < 1.0){
+                row[index[i]] = row[index[i]] + 0.1;
+            }
+            if(row[index[i]+1] < 1.0){
+                row[index[i]+1] = row[index[i]+1] + 0.1;
+            }
+        }
+        else if(index[i] == c-1){
+            if(row[index[i]] < 1.0){
+                row[index[i]] = row[index[i]] + 0.1;
+            }
+            if(row[index[i]-1] < 1.0){
+                row[index[i]-1] = row[index[i]-1] + 0.1;
+            }
+        }
+        else {
+            if(row[index[i]-1] < 1.0){
+                row[index[i]-1] = row[index[i]-1] + 0.1;
+            }
+            if(row[index[i]] < 1.0){
+                row[index[i]] = row[index[i]] + 0.1;
+            }
+            if(row[index[i]+1] < 1.0){
+                row[index[i]+1] = row[index[i]+1] + 0.1;
             }
         }
     }
