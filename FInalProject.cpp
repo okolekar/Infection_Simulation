@@ -74,6 +74,7 @@ The start point of our simulation code.
     M2                  -> State of the cells in the current time step
     Mshare              -> Stores the row sent from another rank after infection, used in the MPI_Recv function call
     MshareI             -> Stores the row sent from another rank after recovery, used in the MPI_Recv function call
+    MshareF             -> Stores the information about infection location, used in the MPI_Recv function call
     random_infected     -> Random row number for initial infection
     random_infectedc    -> Random column number for initial infection
     resilience          -> Resilience against infection
@@ -94,7 +95,7 @@ ________________________________________________________________________________
     int MshareF[c+1];
     MPI_Status status;
     std::string filename = "matrix_output_rank_" + std::to_string(rank) + ".txt";
-    //--------------------------------------------------------------------------------------------------------------------------------------//
+//------------------------------------------------------------------------------------------------------------------------------------------//
 
     if(rank==size-1){
         r = R/size + R%size;
@@ -105,14 +106,14 @@ ________________________________________________________________________________
     float M1[r][c]; 
     float M2[r][c]; 
 
-    //------------------------------------------------Initilizing the matrices---------------------------------------------------------------//
+//--------------------------------------------------Initilizing the matrices---------------------------------------------------------------//
     for(int i=0;i<r;i++){
         for(int j=0;j<c;j++){
             M1[i][j]=0;
             M2[i][j]=0;
         }
     }
-    //--------------------------------------------------------------------------------------------------------------------------------------//
+//----------------------------------------------------------------------------------------------------------------------------------------//
 
     std::random_device rd;                                                                // Get a random seed from the device
     std::mt19937 gen(rd());                                                               // Initialize the Mersenne Twister random number generator
@@ -123,32 +124,31 @@ ________________________________________________________________________________
     int random_infected = distribution(gen);
     int random_infectedc = distribution2(gen);                                            // Generate a random number
     float resilience;
-    int reInfectionFlag[2] = {-1,-1};                                                       // Flag used to check if there was a new infection in the first or the last row during the reinfection stage.
     int lsize = 0;
     int fsize = 0;
 
-    //---------------------------------------------------------------Initial Infection-----------------------------------------------------//
+//------------------------------------------------------------------Initial Infection-----------------------------------------------------//
     int time = 0;
     Infect(M2,r, random_infected, random_infectedc,rank);
     random_infected = distribution(gen);
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
-    //----------------------------------------------------------//
+//---------------------------------------------------------------------------------------------------------------------------------------//
     if(M2[r-1][1]<1){
         Infect(M2, r, r-1, 1,rank);   
     }
-    //----------------------------------------------------------//
+//---------------------------------------------------------------------------------------------------------------------------------------//
     random_infected = distribution(gen);
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
-    //----------------------------------------------------------//
+//---------------------------------------------------------------------------------------------------------------------------------------//
     if(M2[r-1][2]<1){
         Infect(M2,r, r-1, 2,rank);   
     }
     MPI_Barrier(MPI_COMM_WORLD);
-    //----------------------------------------------------------------End of Initial Infection------------------------------------------//
+//--------------------------------------------------------------------End of Initial Infection------------------------------------------//
     if(size>1){
-        //####################################################Starting the send block###################################################//
+//####################################################################Starting the send block###########################################//
         if(rank==0){
             MPI_Send(&M2[r-1][0], c,MPI_FLOAT,1,112,MPI_COMM_WORLD);       //Rank 0 sends the last row to the rank 1
         }
@@ -161,7 +161,7 @@ ________________________________________________________________________________
         }
         MPI_Barrier(MPI_COMM_WORLD);                                       //Barrier to ensure all ranks have finished sending the rows.
 
-        //##################################################Starting the receive block#################################################//
+//####################################################################Starting the receive block########################################//
         if(rank==0){
             MPI_Recv(Mshare, c, MPI_FLOAT, 1, 112, MPI_COMM_WORLD, &status);      //Rank 0 receives the first row from the rank 1
             RowCorrector(M2, Mshare, r-1);
@@ -180,14 +180,14 @@ ________________________________________________________________________________
     }
     for (int i = 0; i < r; i++){         
             for(int j= 0; j < c; j++){
-                M1[i][j] = M2[i][j];}}                                           //Copying the infected state
-//-----------------------------------------For debuging purpose--------------------------------------------------------------//
+                M1[i][j] = M2[i][j];}}                                            //Copying the infected state
+//-------------------------------------------------------------------------For debuging purpose------------------------------------------//
     if (rank == 0){std::cout<< "Printing the initial stage of the matrix" <<std::endl;}
     printMatrixToFile(M2, r, c, filename);
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------------------------------------------------------------------------//    
     while(time<1){
-    //##################################################Reset Recover and Reimmune#################################################//
+//##########################################################################Reset Recover and Reimmune##################################//
         ResetRecoverImmune(M2, r, rank, size);
         MPI_Barrier(MPI_COMM_WORLD);
         if(size>1){
@@ -225,7 +225,7 @@ ________________________________________________________________________________
         std::fill(MshareI, MshareI + c + 1, 0); //MshareI for last row
         lsize = 0;
         fsize = 0;
-        //##################################################Reinfection Block#################################################//
+//############################################################################Reinfection Block#########################################//
         for (int i = 0; i < r; i++){         
             for(int j = 0; j < c; j++){
                 if(M1[i][j]<1.0){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
@@ -234,7 +234,6 @@ ________________________________________________________________________________
                         if(probabilityOfInfection > resilience){
                             Infect(M2,r, i,j,rank);
                             if(i==0){
-                                //reInfectionFlag[0] = r-1;
                                 MshareF[fsize++] = j;
                                 MshareF[c] = r-1;
                             }
@@ -246,7 +245,7 @@ ________________________________________________________________________________
                             break;
                         }}}}}
         MPI_Barrier(MPI_COMM_WORLD);
-        //--------------------------------------------------------------------------------------------------------------------------------------//
+//----------------------------------------------------------------------------------------------------------------------------------------//
         if(size>1){
             //####################################################Starting the send block###################################################//
             if(rank==0){
@@ -303,6 +302,8 @@ ________________________________________________________________________________
     }
     return 0;
 }
+
+//________________________________________________________________________________________________________________________________________________//
 
 void RowCorrector(float (*Mx)[c], float (*Mcr), int cRow){
     for(int i=0;i<c;i++){
