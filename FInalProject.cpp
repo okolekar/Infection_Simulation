@@ -85,8 +85,11 @@ ________________________________________________________________________________
     int rank, size;
     MPI_Init(&argc, &argv);
     int r;
+    double starttime, endtime;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Barrier(MPI_COMM_WORLD);
+    starttime = MPI_Wtime();
     if(rank==0){
         std::cout<<"The Simulation started with total ranks = "<< size <<std::endl;
     }
@@ -134,16 +137,16 @@ ________________________________________________________________________________
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
 //---------------------------------------------------------------------------------------------------------------------------------------//
-    if(M2[r-1][1]<1){
-        Infect(M2, r, r-1, 1,rank);   
+    if(M2[random_infected][random_infectedc]<1){
+        Infect(M2, r, random_infected, random_infectedc,rank);   
     }
 //---------------------------------------------------------------------------------------------------------------------------------------//
     random_infected = distribution(gen);
     random_infectedc = distribution2(gen);
     MPI_Barrier(MPI_COMM_WORLD);
 //---------------------------------------------------------------------------------------------------------------------------------------//
-    if(M2[r-1][2]<1){
-        Infect(M2,r, r-1, 2,rank);   
+    if(M2[random_infected][random_infectedc]<1){
+        Infect(M2,r, random_infected, random_infectedc,rank);   
     }
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------End of Initial Infection------------------------------------------//
@@ -294,11 +297,13 @@ ________________________________________________________________________________
 	    printMatrixToFile(M2,r,c,filename);
         //--------------------------------------------------------------------------------------------------------------------------------------//
         }
-    MPI_Finalize();
-    if(rank==0){
+        if(rank==0){
         std::cout<<"The Simulation completed with no errors."<<std::endl;
         std::cout<<"All the necessary files have been saved successfully."<<std::endl;
-    }
+            }
+        endtime = MPI_Wtime();
+        std::cout<<"The time taken is "<<endtime-starttime<<" for "<<size<<" number of ranks"<< std::endl;
+    MPI_Finalize();
     return 0;
 }
 
