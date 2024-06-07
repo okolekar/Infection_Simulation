@@ -20,8 +20,8 @@ ________________________________________________________________________________
 const static float q                        = 0.3;
 const static float probabilityOfInfection   = 0.2;
 const static int immune_time                = 3;
-const static int R                          = 15; 
-const static int c                          = 15;                                                                                     
+const static int R                          = 1000; 
+const static int c                          = 1000;                                                                                     
 
 /*
 ======================================================= ****Function Declaration**** ======================================================
@@ -132,22 +132,11 @@ ________________________________________________________________________________
 
 //------------------------------------------------------------------Initial Infection-----------------------------------------------------//
     int time = 0;
-    Infect(M2,r, random_infected, random_infectedc,rank);
-    random_infected = distribution(gen);
-    random_infectedc = distribution2(gen);
-    MPI_Barrier(MPI_COMM_WORLD);
-//---------------------------------------------------------------------------------------------------------------------------------------//
-    if(M2[random_infected][random_infectedc]<1){
-        Infect(M2, r, random_infected, random_infectedc,rank);   
-    }
-//---------------------------------------------------------------------------------------------------------------------------------------//
-    random_infected = distribution(gen);
-    random_infectedc = distribution2(gen);
-    MPI_Barrier(MPI_COMM_WORLD);
-//---------------------------------------------------------------------------------------------------------------------------------------//
-    if(M2[random_infected][random_infectedc]<1){
-        Infect(M2,r, random_infected, random_infectedc,rank);   
-    }
+    for(int i=0;i<5;i++){
+        random_infected = distribution(gen);
+        random_infectedc = distribution2(gen);
+        if(M2[random_infected][random_infectedc]<1){
+            Infect(M2,r, random_infected, random_infectedc,rank);}}
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------End of Initial Infection------------------------------------------//
     if(size>1){
@@ -189,7 +178,7 @@ ________________________________________________________________________________
     printMatrixToFile(M2, r, c, filename);
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------------------------------------------------------------------------//    
-    while(time<1){
+    while(time<5){
 //##########################################################################Reset Recover and Reimmune##################################//
         ResetRecoverImmune(M2, r, rank, size);
         MPI_Barrier(MPI_COMM_WORLD);
