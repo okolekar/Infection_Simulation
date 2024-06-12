@@ -2,6 +2,7 @@
 #include <random>
 #include <fstream>
 #include <iomanip>
+#include <omp.h>
 #include "mpi.h"
 #include <algorithm>
 
@@ -20,8 +21,8 @@ ________________________________________________________________________________
 const static float q                        = 0.3;
 const static float probabilityOfInfection   = 0.2;
 const static int immune_time                = 3;
-const static int R                          = 1000; 
-const static int c                          = 1000;                                                                                     
+const static int R                          = 15; 
+const static int c                          = 15;                                                                                     
 
 /*
 ======================================================= ****Function Declaration**** ======================================================
@@ -82,16 +83,17 @@ The start point of our simulation code.
 
 ___________________________________________________________________________________________________________________________________________    
 */
-    int rank, size;
+    int rank, size,r,i,j,nthreads;
     MPI_Init(&argc, &argv);
-    int r;
     double starttime, endtime;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Barrier(MPI_COMM_WORLD);
     starttime = MPI_Wtime();
+    #pragma omp parallel num_threads(2)
+    nthreads = omp_get_num_threads();
     if(rank==0){
-        std::cout<<"The Simulation started with total ranks = "<< size <<std::endl;
+        std::cout<<"The Simulation started with total ranks = "<< size << " and total threads = "<< nthreads<<std::endl;
     }
     float Mshare[c+1];
     int MshareI[c+1];
@@ -110,12 +112,13 @@ ________________________________________________________________________________
     float M2[r][c]; 
 
 //--------------------------------------------------Initilizing the matrices---------------------------------------------------------------//
-    for(int i=0;i<r;i++){
-        for(int j=0;j<c;j++){
-            M1[i][j]=0;
-            M2[i][j]=0;
+    #pragma omp parallel for private(i,j) shared (M1,M2,r,c)
+        for(i=0;i<r;i++){
+            for(j=0;j<c;j++){
+                M1[i][j]=0;
+                M2[i][j]=0;
+            }
         }
-    }
 //----------------------------------------------------------------------------------------------------------------------------------------//
 
     std::random_device rd;                                                                // Get a random seed from the device
@@ -131,12 +134,13 @@ ________________________________________________________________________________
     int fsize = 0;
 
 //------------------------------------------------------------------Initial Infection-----------------------------------------------------//
-    int time = 0;
-    for(int i=0;i<5;i++){
-        random_infected = distribution(gen);
-        random_infectedc = distribution2(gen);
-        if(M2[random_infected][random_infectedc]<1){
-            Infect(M2,r, random_infected, random_infectedc,rank);}}
+    int timet = 0;
+    #pragma omp parallel for private(i,random_infected,random_infectedc) shared (M2)
+        for(i=0;i<5;i++){
+            random_infected = distribution(gen);
+            random_infectedc = distribution2(gen);
+            if(M2[random_infected][random_infectedc]<1){
+                Infect(M2,r, random_infected, random_infectedc,rank);}}
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------End of Initial Infection------------------------------------------//
     if(size>1){
@@ -170,15 +174,16 @@ ________________________________________________________________________________
         }
         MPI_Barrier(MPI_COMM_WORLD);
     }
-    for (int i = 0; i < r; i++){         
-            for(int j= 0; j < c; j++){
+    #pragma omp parallel for private(i,j) shared (M1,M2,r,c)
+        for (i = 0; i < r; i++){         
+            for(j= 0; j < c; j++){
                 M1[i][j] = M2[i][j];}}                                            //Copying the infected state
 //-------------------------------------------------------------------------For debuging purpose------------------------------------------//
     if (rank == 0){std::cout<< "Printing the initial stage of the matrix" <<std::endl;}
     printMatrixToFile(M2, r, c, filename);
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------------------------------------------------------------------------//    
-    while(time<5){
+    while(timet<1){
 //##########################################################################Reset Recover and Reimmune##################################//
         ResetRecoverImmune(M2, r, rank, size);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -217,7 +222,7 @@ ________________________________________________________________________________
         std::fill(MshareI, MshareI + c + 1, 0); //MshareI for last row
         lsize = 0;
         fsize = 0;
-//############################################################################Reinfection Block#########################################//
+//############################################################################Reinfection Block#########################################//        
         for (int i = 0; i < r; i++){         
             for(int j = 0; j < c; j++){
                 if(M1[i][j]<1.0){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
@@ -234,7 +239,7 @@ ________________________________________________________________________________
                                 MshareI[c] = r-1;
                             }
                             break;
-                        }}}}}
+                            }}}}}
         MPI_Barrier(MPI_COMM_WORLD);
 //----------------------------------------------------------------------------------------------------------------------------------------//
         if(size>1){
@@ -277,12 +282,13 @@ ________________________________________________________________________________
         }
         MPI_Barrier(MPI_COMM_WORLD);
         //####################################################Adding the current state to history###################################################//
-        for (int i = 0; i < r; i++){         
-            for(int j= 0; j < c; j++){
-                M1[i][j] = M2[i][j];}}
+        #pragma omp parallel for private(i,j) shared (M1,M2,r,c)
+            for (i = 0; i < r; i++){         
+                for(j= 0; j < c; j++){
+                    M1[i][j] = M2[i][j];}}
         //-----------------------------------------------------------------------------------------------------------------------------------------//
-        time +=1; //updating the time
-        if (rank == 0){std::cout<< "Printing the stage of the matrix at time t = "<< time <<std::endl;}
+        timet +=1; //updating the time
+        if (rank == 0){std::cout<< "Printing the stage of the matrix at time t = "<< timet <<std::endl;}
 	    printMatrixToFile(M2,r,c,filename);
         //--------------------------------------------------------------------------------------------------------------------------------------//
         }
@@ -299,28 +305,31 @@ ________________________________________________________________________________
 //________________________________________________________________________________________________________________________________________________//
 
 void RowCorrector(float (*Mx)[c], float (*Mcr), int cRow){
-    for(int i=0;i<c;i++){
-        if(Mcr[i]==1){
-            if(i==0){                                                                                                   //This if statement takes care of the left corner point
-                if(Mx[cRow][i]<1.0){Mx[cRow][i] += 0.1;}                                                                //This if statement takes care of the right corner point
-                if(Mx[cRow][i+1]<1.0){Mx[cRow][i+1] += 0.1;}                                                                
-            }                                                                                                                       
-            else if(i==c-1){                                                                            
-                if(Mx[cRow][i]<1.0){Mx[cRow][i] += 0.1;}                                                                
-                if(Mx[cRow][i-1]<1.0){Mx[cRow][i-1] += 0.1;}                                                                
-            }                                                                                               
-            else {                                                                                                      //This else statement takes care of all other points
-                if(Mx[cRow][i-1]<1.0){Mx[cRow][i-1] += 0.1;}
-                if(Mx[cRow][i]<1.0){Mx[cRow][i] += 0.1;}
-                if(Mx[cRow][i+1]<1.0){Mx[cRow][i+1] += 0.1;}
+    int i=0;
+    #pragma omp parallel for private(i) shared (Mx,Mcr,cRow,c)
+        for(i=0;i<c;i++){
+            if(Mcr[i]==1){
+                if(i==0){                                                                                                   //This if statement takes care of the left corner point
+                    if(Mx[cRow][i]<1.0){Mx[cRow][i] += 0.1;}                                                                //This if statement takes care of the right corner point
+                    if(Mx[cRow][i+1]<1.0){Mx[cRow][i+1] += 0.1;}                                                                
+                }                                                                                                                       
+                else if(i==c-1){                                                                            
+                    if(Mx[cRow][i]<1.0){Mx[cRow][i] += 0.1;}                                                                
+                    if(Mx[cRow][i-1]<1.0){Mx[cRow][i-1] += 0.1;}                                                                
+                }                                                                                               
+                else {                                                                                                      //This else statement takes care of all other points
+                    if(Mx[cRow][i-1]<1.0){Mx[cRow][i-1] += 0.1;}
+                    if(Mx[cRow][i]<1.0){Mx[cRow][i] += 0.1;}
+                    if(Mx[cRow][i+1]<1.0){Mx[cRow][i+1] += 0.1;}
+                }
             }
         }
-    }
 }
 
 void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){ 
     int lastRowRecover[c+1];
     int firstRowRecover[c+1];
+    int k,l;
     std::fill(lastRowRecover, lastRowRecover + c + 1, 0);
     std::fill(firstRowRecover, firstRowRecover + c + 1, 0); 
     int lsize = 0;
@@ -341,7 +350,6 @@ void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){
                 flag = 0;
             }
             if (Mx[i][j] >= 1 && Mx[i][j] < immune_time+1 && flag == 1){
-                //#pragma omp parallel for private(i,j) shared (Mx,i,j)
                 if (Mx[i][j] == 1){
                     if(rank == 0 && i==r-1){
                         lastRowRecover[lsize++] = j; //Adding the column which was recovered
@@ -362,8 +370,9 @@ void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){
                         }
                     }
                 }
-                for (int k=i-1;k<i+2;k++){
-                    for (int l=j-1;l<j+2;l++){
+                #pragma omp parallel for private(k,l) shared (Mx,i,j)
+                for (k=i-1;k<i+2;k++){
+                    for (l=j-1;l<j+2;l++){
                         if (k==i && l==j){
                             Mx[i][j] = Mx[i][j]+1;                                                                       //Removes the infection flag and sets the value in the cell = the time past, for which it is immune
                         }
@@ -398,77 +407,80 @@ void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){
 }
 
 void RowCorrector2(float *row, int *index, int c, int rank){
-    for(int i=0;i<c;i++){
-        if (i>0 && index[i] == 0){
-            break;
+    int i=0;
+        for(i=0;i<c;i++){
+            if (i>0 && index[i] == 0){
+                break;
+            }
+            if(index[i] == 0){
+                if(row[index[i]] < 1.0 && row[index[i]] > 0.0){
+                    row[index[i]] = row[index[i]] - 0.1;
+                }
+                if(row[index[i]+1] < 1.0 && row[index[i]+1] > 0.0){
+                    row[index[i]+1] = row[index[i]+1] - 0.1;
+                }
+            }
+            else if(index[i] == c-1){
+                if(row[index[i]] < 1.0 && row[index[i]] > 0.0){
+                    row[index[i]] = row[index[i]] - 0.1;
+                }
+                if(row[index[i]-1] < 1.0 && row[index[i]-1] > 0.0){
+                    row[index[i]-1] = row[index[i]-1] - 0.1;
+                }
+            }
+            else {
+                if(row[index[i]-1] < 1.0 && row[index[i]-1] > 0.0){
+                    row[index[i]-1] = row[index[i]-1] - 0.1;
+                }
+                if(row[index[i]] < 1.0 && row[index[i]] > 0.0){
+                    row[index[i]] = row[index[i]] - 0.1;
+                }
+                if(row[index[i]+1] < 1.0 && row[index[i]+1] > 0.0){
+                    row[index[i]+1] = row[index[i]+1] - 0.1;
+                }
+            }
         }
-        if(index[i] == 0){
-            if(row[index[i]] < 1.0 && row[index[i]] > 0.0){
-                row[index[i]] = row[index[i]] - 0.1;
-            }
-            if(row[index[i]+1] < 1.0 && row[index[i]+1] > 0.0){
-                row[index[i]+1] = row[index[i]+1] - 0.1;
-            }
-        }
-        else if(index[i] == c-1){
-            if(row[index[i]] < 1.0 && row[index[i]] > 0.0){
-                row[index[i]] = row[index[i]] - 0.1;
-            }
-            if(row[index[i]-1] < 1.0 && row[index[i]-1] > 0.0){
-                row[index[i]-1] = row[index[i]-1] - 0.1;
-            }
-        }
-        else {
-            if(row[index[i]-1] < 1.0 && row[index[i]-1] > 0.0){
-                row[index[i]-1] = row[index[i]-1] - 0.1;
-            }
-            if(row[index[i]] < 1.0 && row[index[i]] > 0.0){
-                row[index[i]] = row[index[i]] - 0.1;
-            }
-            if(row[index[i]+1] < 1.0 && row[index[i]+1] > 0.0){
-                row[index[i]+1] = row[index[i]+1] - 0.1;
-            }
-        }
-    }
 }
 
 void RowCorrector3(float *row, int *index, int c, int rank){
-    for(int i=0;i<c;i++){
-        if (i>0 && index[i] == 0){
-            break;
+    int i=0;
+        for(i=0;i<c;i++){
+            if (i>0 && index[i] == 0){
+                break;
+            }
+            if(index[i] == 0){
+                if(row[index[i]] < 1.0){
+                    row[index[i]] = row[index[i]] + 0.1;
+                }
+                if(row[index[i]+1] < 1.0){
+                    row[index[i]+1] = row[index[i]+1] + 0.1;
+                }
+            }
+            else if(index[i] == c-1){
+                if(row[index[i]] < 1.0){
+                    row[index[i]] = row[index[i]] + 0.1;
+                }
+                if(row[index[i]-1] < 1.0){
+                    row[index[i]-1] = row[index[i]-1] + 0.1;
+                }
+            }
+            else {
+                if(row[index[i]-1] < 1.0){
+                    row[index[i]-1] = row[index[i]-1] + 0.1;
+                }
+                if(row[index[i]] < 1.0){
+                    row[index[i]] = row[index[i]] + 0.1;
+                }
+                if(row[index[i]+1] < 1.0){
+                    row[index[i]+1] = row[index[i]+1] + 0.1;
+                }
+            }
         }
-        if(index[i] == 0){
-            if(row[index[i]] < 1.0){
-                row[index[i]] = row[index[i]] + 0.1;
-            }
-            if(row[index[i]+1] < 1.0){
-                row[index[i]+1] = row[index[i]+1] + 0.1;
-            }
-        }
-        else if(index[i] == c-1){
-            if(row[index[i]] < 1.0){
-                row[index[i]] = row[index[i]] + 0.1;
-            }
-            if(row[index[i]-1] < 1.0){
-                row[index[i]-1] = row[index[i]-1] + 0.1;
-            }
-        }
-        else {
-            if(row[index[i]-1] < 1.0){
-                row[index[i]-1] = row[index[i]-1] + 0.1;
-            }
-            if(row[index[i]] < 1.0){
-                row[index[i]] = row[index[i]] + 0.1;
-            }
-            if(row[index[i]+1] < 1.0){
-                row[index[i]+1] = row[index[i]+1] + 0.1;
-            }
-        }
-    }
+    
 }
 
 void Infect(float (*Mx)[c], int r, int m,int n, int rank){
-    int tr,tc,er,ec;
+    int tr,tc,er,ec,i,j;
     if(m==0){
         tr = 0;
         er = m + 2;
@@ -494,9 +506,9 @@ void Infect(float (*Mx)[c], int r, int m,int n, int rank){
             ec = n + 2;
     }
 
-    //#pragma omp parallel for private(i,j) shared (tr,tc,er,ec,Mx)
-    for(int i=tr;i<er;i++){
-        for(int j=tc;j<ec;j++){
+    #pragma omp parallel for private(i,j) shared (tr,tc,er,ec,Mx)
+    for(i=tr;i<er;i++){
+        for(j=tc;j<ec;j++){
             if (Mx[i][j] < 1 ){
                 Mx[i][j] = Mx[i][j] + 0.1;
             } 
@@ -519,12 +531,12 @@ void printMatrixToFile(float (*matrix)[c], int rows, int cols, const std::string
     // Write the matrix to the file
     for (int i = 0; i < rows; ++i) {
         for (int j = 0; j < cols; ++j) {
-	    if(matrix[i][j]<0.1){
-		outFile << std::setw(4) << 0 << ";";
-		}
-	    else {
-            	outFile << std::setw(4) << matrix[i][j] << ";";  // Format the output as needed
-		}
+            if(matrix[i][j]<0.1){
+            outFile << std::setw(4) << 0 << ";";
+            }
+            else {
+                    outFile << std::setw(4) << matrix[i][j] << ";";  // Format the output as needed
+            }
         }
         outFile << std::endl;
     }
