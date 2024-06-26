@@ -1,46 +1,29 @@
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import matplotlib.colors as mcolors
+from matplotlib.colors import ListedColormap, BoundaryNorm
 
-def read_matrices_from_file(file_path):
-    with open(file_path, 'r') as file:
-        content = file.read().strip()
-        matrices = content.split('\n\n')
-        matrix_list = []
-        for matrix in matrices:
-            rows = matrix.split('\n')
-            matrix_data = [list(map(float, row.split())) for row in rows]
-            matrix_list.append(np.array(matrix_data))
-        return matrix_list
+# Step 1: Read the matrix from an Excel file
+file_path = './time0.ods'  # Update this with the actual path to your Excel file
+matrix_df = pd.read_excel(file_path, header=None)
+matrix = matrix_df.to_numpy()
 
-def update_frame(num, matrices, img, title_prefix):
-    img.set_array(matrices[num])
-    img.axes.set_title(f'{title_prefix} t = {num}')
-    return img,
+# Step 2: Define the color map
+# Custom colors for the specified ranges
+cmap = ListedColormap(['purple', 'yellow', 'purple'])
 
-def create_animation(matrices, title_prefix):
-    # Custom colormap and normalization
-    colors = ['green', 'lightcoral', 'coral', 'red', 'green', 'green']
-    cmap = mcolors.ListedColormap(colors)
-    bounds = [0.0, 0.1, 0.5, 1.0, 2.0, 3.0, 4.0]
-    norm = mcolors.BoundaryNorm(bounds, cmap.N)
-    
-    fig, ax = plt.subplots()
-    img = ax.imshow(matrices[0], cmap=cmap, norm=norm, aspect='auto')
-    ax.set_title(f'{title_prefix} t = 0')
-    fig.colorbar(img, ax=ax, ticks=[0.0, 1.0, 2.0, 3.0])
-    
-    ani = animation.FuncAnimation(
-        fig, update_frame, fargs=(matrices, img, title_prefix), frames=len(matrices), interval=500, blit=True
-    )
+# Define the boundaries
+bounds = [0, 1, 1.01, 3.1]
 
-    plt.show()
+# Normalize the data to the bounds
+norm = BoundaryNorm(bounds, cmap.N)
 
-# File paths for the three text files
-file_paths = ['infection_0.txt', 'infection_1.txt', 'infection_2.txt', 'infection_3.txt']
+# Step 3: Plot the matrix
+fig, ax = plt.subplots()
+cbar = ax.imshow(matrix, cmap=cmap, norm=norm)
 
-# Read and animate matrices from each file
-for i, file_path in enumerate(file_paths):
-    matrices = read_matrices_from_file(file_path)
-    create_animation(matrices, f'File {i+1}')
+# Adding a color bar for reference
+cbar = plt.colorbar(cbar, ticks=[0, 1, 1.01, 3])
+cbar.ax.set_yticklabels(['0', '1', '1.01', '3'])
+
+plt.show()

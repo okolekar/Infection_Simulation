@@ -18,11 +18,11 @@ The below defined are some of the universal constants used in this Program which
     c                       = Total number of columns of the grid under consideration
 ___________________________________________________________________________________________________________________________________________    
 */
-const static float q                        = 0.3;
+const static float q                        = 0.1;
 const static float probabilityOfInfection   = 0.2;
 const static int immune_time                = 3;
-const static int R                          = 15; 
-const static int c                          = 15;                                                                                     
+const static int R                          = 25; 
+const static int c                          = 25;                                                                                     
 
 /*
 ======================================================= ****Function Declaration**** ======================================================
@@ -90,7 +90,7 @@ ________________________________________________________________________________
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Barrier(MPI_COMM_WORLD);
     starttime = MPI_Wtime();
-    #pragma omp parallel num_threads(2)
+    #pragma omp parallel num_threads(1)
     nthreads = omp_get_num_threads();
     if(rank==0){
         std::cout<<"The Simulation started with total ranks = "<< size << " and total threads = "<< nthreads<<std::endl;
@@ -179,11 +179,11 @@ ________________________________________________________________________________
             for(j= 0; j < c; j++){
                 M1[i][j] = M2[i][j];}}                                            //Copying the infected state
 //-------------------------------------------------------------------------For debuging purpose------------------------------------------//
-    if (rank == 0){std::cout<< "Printing the initial stage of the matrix" <<std::endl;}
+    if (rank == 0){std::cout<< "Completed the initial stage of the matrix" <<std::endl;}
     printMatrixToFile(M2, r, c, filename);
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------------------------------------------------------------------------//    
-    while(timet<1){
+    while(timet<3){
 //##########################################################################Reset Recover and Reimmune##################################//
         ResetRecoverImmune(M2, r, rank, size);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -288,7 +288,7 @@ ________________________________________________________________________________
                     M1[i][j] = M2[i][j];}}
         //-----------------------------------------------------------------------------------------------------------------------------------------//
         timet +=1; //updating the time
-        if (rank == 0){std::cout<< "Printing the stage of the matrix at time t = "<< timet <<std::endl;}
+        if (rank == 0){std::cout<< "Completed the stage of the matrix at time t = "<< timet <<std::endl;}
 	    printMatrixToFile(M2,r,c,filename);
         //--------------------------------------------------------------------------------------------------------------------------------------//
         }
