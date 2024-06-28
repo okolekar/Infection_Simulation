@@ -19,7 +19,7 @@ The below defined are some of the universal constants used in this Program which
 ___________________________________________________________________________________________________________________________________________    
 */
 const static float q                        = 0.1;
-const static float probabilityOfInfection   = 0.2;
+const static float probabilityOfInfection   = 0.5;
 const static int immune_time                = 3;
 const static int R                          = 25; 
 const static int c                          = 25;                                                                                     
@@ -52,11 +52,13 @@ For specific details about a specific function please see the description in the
 ___________________________________________________________________________________________________________________________________________    
 */
 void printMatrixToFile(float (*matrix)[c], int rows, int cols, const std::string& filename);
-void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size);
+void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size,int timet);
 void Infect(float (*Mx)[c], int r, int m,int n, int rank);
 void RowCorrector2(float *row, int *index, int c, int rank);
 void RowCorrector3(float *row, int *index, int c, int rank);
 void RowCorrector(float (*Mx)[c], float (*Mcr), int cRow);
+void printRowToFile(float* matrix, int cols, int timet, const std::string& filename);
+void printRowToFileInt(int (*matrix), int cols, int timet, const std::string& filename);
 //____________________________________________________ **** End of Declarations **** _____________________________________________________//
 //_______________________________________________________________________________________________________________________________________//
 
@@ -100,6 +102,8 @@ ________________________________________________________________________________
     int MshareF[c+1];
     MPI_Status status;
     std::string filename = "matrix_output_rank_" + std::to_string(rank) + ".txt";
+    std::string sentrowfilename = "sent_output_rank_" + std::to_string(rank) + ".txt";
+    std::string recivfilename = "recieve_output_rank_" + std::to_string(rank) + ".txt";
 //------------------------------------------------------------------------------------------------------------------------------------------//
 
     if(rank==size-1){
@@ -132,7 +136,6 @@ ________________________________________________________________________________
     float resilience;
     int lsize = 0;
     int fsize = 0;
-
 //------------------------------------------------------------------Initial Infection-----------------------------------------------------//
     int timet = 0;
     #pragma omp parallel for private(i,random_infected,random_infectedc) shared (M2)
@@ -143,17 +146,22 @@ ________________________________________________________________________________
                 Infect(M2,r, random_infected, random_infectedc,rank);}}
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------End of Initial Infection------------------------------------------//
+    //printMatrixToFile(M2, r, c, filename);
     if(size>1){
 //####################################################################Starting the send block###########################################//
         if(rank==0){
             MPI_Send(&M2[r-1][0], c,MPI_FLOAT,1,112,MPI_COMM_WORLD);       //Rank 0 sends the last row to the rank 1
+            printRowToFile(&M2[r-1][0], c, timet, sentrowfilename);
         }
         else if(rank==size-1){                                          
             MPI_Send(&M2[0][0], c,MPI_FLOAT,size-2,112,MPI_COMM_WORLD);    //Last rank sends the first row to the second last rank
+            printRowToFile(&M2[0][0], c+1, timet, sentrowfilename);
         }
         else {
             MPI_Send(&M2[r-1][0], c,MPI_FLOAT,rank+1,112,MPI_COMM_WORLD);  //Inbetween ranks sends first row to the previous rank 
+            printRowToFile(&M2[r-1][0], c+1, timet, sentrowfilename);
             MPI_Send(&M2[0][0], c,MPI_FLOAT,rank-1,112,MPI_COMM_WORLD);    //and the last row to the next rank
+            printRowToFile(&M2[0][0], c+1, timet, sentrowfilename);
         }
         MPI_Barrier(MPI_COMM_WORLD);                                       //Barrier to ensure all ranks have finished sending the rows.
 
@@ -161,16 +169,20 @@ ________________________________________________________________________________
         if(rank==0){
             MPI_Recv(Mshare, c, MPI_FLOAT, 1, 112, MPI_COMM_WORLD, &status);      //Rank 0 receives the first row from the rank 1
             RowCorrector(M2, Mshare, r-1);
+            printRowToFile(Mshare, c, timet, recivfilename);
         }
         else if(rank==size-1){                                          
             MPI_Recv(Mshare, c, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD, &status); //Last rank receives the last row from the second last rank
             RowCorrector(M2, Mshare, 0);
+            printRowToFile(Mshare, c, timet, recivfilename);
         }                                                                                                               
         else {                                                                                                          
             MPI_Recv(Mshare, c, MPI_FLOAT, rank+1, 112, MPI_COMM_WORLD, &status); //Inbetween ranks receives last row from the previous rank
             RowCorrector(M2, Mshare, r-1); 
+            printRowToFile(Mshare, c, timet, recivfilename);
             MPI_Recv(Mshare, c, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD, &status); //and the first row from the next rank
             RowCorrector(M2, Mshare, 0);
+            printRowToFile(Mshare, c, timet, recivfilename);
         }
         MPI_Barrier(MPI_COMM_WORLD);
     }
@@ -185,35 +197,41 @@ ________________________________________________________________________________
 //--------------------------------------------------------------------------------------------------------------------------------------//    
     while(timet<3){
 //##########################################################################Reset Recover and Reimmune##################################//
-        ResetRecoverImmune(M2, r, rank, size);
+        ResetRecoverImmune(M2, r, rank, size, timet);
         MPI_Barrier(MPI_COMM_WORLD);
         if(size>1){
             if(rank == 0){
                 MPI_Recv(MshareI, c+1, MPI_INT,1,112,MPI_COMM_WORLD,&status);
                 if(MshareI[c] != 0){
                     RowCorrector2(M2[r-1], MshareI, c,rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 }
             }
             else if(rank == size-1){
                 MPI_Recv(MshareI, c+1, MPI_INT,size-2,112,MPI_COMM_WORLD,&status);
                 if(MshareI[c] != 0){
                     RowCorrector2(M2[0], MshareI, c, rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 }
             }
             else{
                 MPI_Recv(MshareI, c+1, MPI_INT,rank-1,112,MPI_COMM_WORLD,&status);
                 if(MshareI[c] == 1){
                     RowCorrector2(M2[r-1], MshareI, c, rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 }
                 else if(MshareI[c] == 2){
                     RowCorrector2(M2[0], MshareI, c, rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 }
                 MPI_Recv(MshareI, c+1, MPI_INT,rank+1,112,MPI_COMM_WORLD,&status);
                 if(MshareI[c] == 1){
                     RowCorrector2(M2[r-1], MshareI, c, rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 }
                 else if(MshareI[c] == 2){
                     RowCorrector2(M2[0], MshareI, c, rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 }
             }
         }
@@ -225,7 +243,7 @@ ________________________________________________________________________________
 //############################################################################Reinfection Block#########################################//        
         for (int i = 0; i < r; i++){         
             for(int j = 0; j < c; j++){
-                if(M1[i][j]<1.0){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
+                if(M1[i][j]<1){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
                     for(int per = 0; per < (int)(M2[i][j]*10); per++){ //per is the person surrounding the cell under consideration
                         resilience = infection_Probability_Distribution(gen);
                         if(probabilityOfInfection > resilience){
@@ -245,38 +263,46 @@ ________________________________________________________________________________
         if(size>1){
             //####################################################Starting the send block###################################################//
             if(rank==0){
-                MPI_Send(&MshareI, c+1, MPI_FLOAT, 1, 112, MPI_COMM_WORLD);                                                   //Rank 0 sends the last row to the rank 1
+                MPI_Send(&MshareI, c+1, MPI_INT, 1, 112, MPI_COMM_WORLD);                                                   //Rank 0 sends the last row to the rank 1
+                printRowToFileInt(MshareI, c+1, timet, sentrowfilename);
             }
             else if(rank==size-1){                                          
-                MPI_Send(&MshareF, c+1, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD);                                                //Last rank sends the first row to the second last rank
+                MPI_Send(&MshareF, c+1, MPI_INT, size-2, 112, MPI_COMM_WORLD);                                                //Last rank sends the first row to the second last rank
+                printRowToFileInt(MshareF, c+1, timet, sentrowfilename);
             }
             else {
-                MPI_Send(&MshareI, c+1, MPI_FLOAT, rank+1, 112, MPI_COMM_WORLD);                                              //Inbetween ranks sends first row to the previous rank 
-                MPI_Send(&MshareF, c+1, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD);                                                //and the last row to the next rank
+                MPI_Send(&MshareI, c+1, MPI_INT, rank+1, 112, MPI_COMM_WORLD);                                              //Inbetween ranks sends first row to the previous rank 
+                printRowToFileInt(MshareI, c+1, timet, sentrowfilename);
+                MPI_Send(&MshareF, c+1, MPI_INT, rank-1, 112, MPI_COMM_WORLD);                                                //and the last row to the next rank
+                printRowToFileInt(MshareF, c+1, timet, sentrowfilename);
             }
             MPI_Barrier(MPI_COMM_WORLD);                                                                                   //Barrier to ensure all ranks have finished sending the rows.
 
             //##################################################Starting the receive block#################################################//
             if(rank==0){
-                MPI_Recv(MshareI, c+1, MPI_FLOAT, 1, 112, MPI_COMM_WORLD, &status);                                          //Rank 0 receives the first row from the rank 1
+                MPI_Recv(MshareI, c+1, MPI_INT, 1, 112, MPI_COMM_WORLD, &status);                                          //Rank 0 receives the first row from the rank 1
                 if(MshareI[c]>0){
                     RowCorrector3(M2[r-1], MshareI, c, rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 }
             }   
             else if(rank==size-1){                                         
-                MPI_Recv(MshareF, c+1, MPI_FLOAT, size-2, 112, MPI_COMM_WORLD, &status);                                     //Last rank receives the last row from the second last rank
+                MPI_Recv(MshareF, c+1, MPI_INT, size-2, 112, MPI_COMM_WORLD, &status);                                     //Last rank receives the last row from the second last rank
                 if(MshareF[c]>0){
                     RowCorrector3(M2[0], MshareF, c, rank);
+                    printRowToFileInt(MshareF, c+1, timet, recivfilename);
                 }
             }                                                                                                               
             else {                                                                                                          
-                MPI_Recv(MshareI, c+1, MPI_FLOAT, rank+1, 112, MPI_COMM_WORLD, &status);                                    //Inbetween ranks receives last row from the previous rank
+                MPI_Recv(MshareI, c+1, MPI_INT, rank+1, 112, MPI_COMM_WORLD, &status);                                    //Inbetween ranks receives last row from the previous rank
                 if(MshareI[c]>0){
                     RowCorrector3(M2[r-1], MshareI, c, rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 } 
-                MPI_Recv(MshareF, c+1, MPI_FLOAT, rank-1, 112, MPI_COMM_WORLD, &status);                                    //and the first row from the next rank
+                MPI_Recv(MshareF, c+1, MPI_INT, rank-1, 112, MPI_COMM_WORLD, &status);                                    //and the first row from the next rank
                 if(MshareF[c]>0){
                     RowCorrector3(M2[0], MshareF, c, rank);
+                    printRowToFileInt(MshareI, c+1, timet, recivfilename);
                 }
             } 
         }
@@ -326,7 +352,7 @@ void RowCorrector(float (*Mx)[c], float (*Mcr), int cRow){
         }
 }
 
-void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size){ 
+void ResetRecoverImmune(float (*Mx)[c], int r, int rank, int size,int timet){ 
     int lastRowRecover[c+1];
     int firstRowRecover[c+1];
     int k,l;
@@ -540,6 +566,49 @@ void printMatrixToFile(float (*matrix)[c], int rows, int cols, const std::string
         }
         outFile << std::endl;
     }
+    outFile << std::endl;  // Separate matrices by an empty line
+    outFile.close();
+}
+
+
+void printRowToFile(float* matrix, int cols, int timet, const std::string& filename) {
+    // Open the file in append mode
+    std::ofstream outFile(filename, std::ios::app);
+    if (!outFile) {
+        std::cerr << "Unable to open file " << filename << std::endl;
+        return;
+    }
+    outFile << "The time step was " << timet << std::endl;
+    // Write the matrix to the file
+        for (int j = 0; j < cols; ++j) {
+            if(matrix[j]<0.1){
+            outFile << std::setw(4) << 0 << ";";
+            }
+            else {
+                    outFile << std::setw(4) << matrix[j] << ";";  // Format the output as needed
+            }
+        }
+    outFile << std::endl;  // Separate matrices by an empty line
+    outFile.close();
+}
+
+void printRowToFileInt(int (*matrix), int cols, int timet, const std::string& filename) {
+    // Open the file in append mode
+    std::ofstream outFile(filename, std::ios::app);
+    if (!outFile) {
+        std::cerr << "Unable to open file " << filename << std::endl;
+        return;
+    }
+    outFile << "The time step was " << timet << std::endl;
+    // Write the matrix to the file
+        for (int j = 0; j < cols; ++j) {
+            if(matrix[j]<0.1){
+            outFile << std::setw(4) << 0 << ";";
+            }
+            else {
+                    outFile << std::setw(4) << matrix[j] << ";";  // Format the output as needed
+            }
+        }
     outFile << std::endl;  // Separate matrices by an empty line
     outFile.close();
 }
