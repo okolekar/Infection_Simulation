@@ -186,7 +186,7 @@ ________________________________________________________________________________
     printMatrixToFile(M2, r, c, filename);
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------------------------------------------------------------------------//    
-    while(timet<3){
+    while(timet<4){
 //##########################################################################Reset Recover and Reimmune##################################//
         ResetRecoverImmune(M2, r, rank, size, timet);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -229,7 +229,7 @@ ________________________________________________________________________________
         for (int i = 0; i < r; i++){         
             for(int j = 0; j < c; j++){
                 if(M1[i][j]<1){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
-                    for(int per = 0; per < (int)(M2[i][j]*10); per++){ //per is the person surrounding the cell under consideration
+                    for(int per = 0; per < (int)(M1[i][j]*10); per++){ //per is the person surrounding the cell under consideration
                         resilience = infection_Probability_Distribution(gen);
                         if(probabilityOfInfection > resilience){
                             Infect(M2,r, i,j,rank);
