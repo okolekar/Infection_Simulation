@@ -524,25 +524,25 @@ void Infect(float (*Mx)[c], int r, int m,int n, int rank){
 
 // Function to print a matrix to a text file
 void printMatrixToFile(float (*matrix)[c], int rows, int cols, const std::string& filename) {
-    // Open the file in append mode
+    
     std::ofstream outFile(filename, std::ios::app);
     if (!outFile) {
         std::cerr << "Unable to open file " << filename << std::endl;
         return;
     }
 
-    // Write the matrix to the file
+    
     for (int i = 0; i < rows; ++i) {
         for (int j = 0; j < cols; ++j) {
             if(matrix[i][j]<0.1){
             outFile << std::setw(4) << 0 << ";";
             }
             else {
-                    outFile << std::setw(4) << matrix[i][j] << ";";  // Format the output as needed
+                    outFile << std::setw(4) << matrix[i][j] << ";";  
             }
         }
         outFile << std::endl;
     }
-    outFile << std::endl;  // Separate matrices by an empty line
+    outFile << std::endl;  
     outFile.close();
 }
