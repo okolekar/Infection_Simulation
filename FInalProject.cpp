@@ -91,18 +91,14 @@ ________________________________________________________________________________
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Barrier(MPI_COMM_WORLD);
     starttime = MPI_Wtime();
-    #pragma omp parallel num_threads(1)
-    nthreads = omp_get_num_threads();
     if(rank==0){
-        std::cout<<"The Simulation started with total ranks = "<< size << " and total threads = "<< nthreads<<std::endl;
+        std::cout<<"The Simulation started with total ranks = "<< size <<std::endl;
     }
     float Mshare[c+1];
     int MshareI[c+1];
     int MshareF[c+1];
     MPI_Status status;
     std::string filename = "matrix_output_rank_" + std::to_string(rank) + ".txt";
-    std::string sentrowfilename = "sent_output_rank_" + std::to_string(rank) + ".txt";
-    std::string recivfilename = "recieve_output_rank_" + std::to_string(rank) + ".txt";
 //------------------------------------------------------------------------------------------------------------------------------------------//
 
     if(rank==size-1){
@@ -115,13 +111,23 @@ ________________________________________________________________________________
     float M2[r][c]; 
 
 //--------------------------------------------------Initilizing the matrices---------------------------------------------------------------//
-    #pragma omp parallel for private(i,j) shared (M1,M2,r,c)
-        for(i=0;i<r;i++){
-            for(j=0;j<c;j++){
-                M1[i][j]=0;
-                M2[i][j]=0;
+    #pragma omp parallel private(i)
+    {
+        nthreads = omp_get_num_threads();
+        if(rank==0){
+            #pragma omp master
+            {
+                std::cout<<"The simulation started with a total number of threads = "<< nthreads<<std::endl;
             }
         }
+        #pragma omp for private(i,j)
+            for(i=0;i<r;i++){
+                for(j=0;j<c;j++){
+                    M1[i][j]=0;
+                    M2[i][j]=0;
+                }
+            }
+    }
 //----------------------------------------------------------------------------------------------------------------------------------------//
 
     std::random_device rd;                                                                // Get a random seed from the device
@@ -135,9 +141,11 @@ ________________________________________________________________________________
     float resilience;
     int lsize = 0;
     int fsize = 0;
+    int per = 0;
 //------------------------------------------------------------------Initial Infection-----------------------------------------------------//
     int timet = 0;
-    #pragma omp parallel for private(i,random_infected,random_infectedc) shared (M2)
+    int mythread;
+    #pragma omp parallel for private(mythread,i,random_infected,random_infectedc) shared (M2)
         for(i=0;i<5;i++){
             random_infected = distribution(gen);
             random_infectedc = distribution2(gen);
@@ -226,20 +234,24 @@ ________________________________________________________________________________
         lsize = 0;
         fsize = 0;
 //############################################################################Reinfection Block#########################################//        
-        for (int i = 0; i < r; i++){         
-            for(int j = 0; j < c; j++){
+        //#pragma omp parallel for private(i,per,gen,resilience) shared (M2,M1,MshareF,MshareI,r,c,fsize,lsize)
+        for (i = 0; i < r; i++){         
+            for(j = 0; j < c; j++){
                 if(M1[i][j]<1){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
-                    for(int per = 0; per < (int)(M1[i][j]*10); per++){ //per is the person surrounding the cell under consideration
+                    for(per = 0; per < (int)(M1[i][j]*10); per++){ //per is the person surrounding the cell under consideration
                         resilience = infection_Probability_Distribution(gen);
                         if(probabilityOfInfection > resilience){
-                            Infect(M2,r, i,j,rank);
-                            if(i==0){
-                                MshareF[fsize++] = j;
-                                MshareF[c] = r-1;
-                            }
-                            else if(i==r-1){
-                                MshareI[fsize++] = j;
-                                MshareI[c] = r-1;
+                            #pragma omp critical
+                            {    
+                                Infect(M2,r, i,j,rank);
+                                if(i==0){
+                                    MshareF[fsize++] = j;
+                                    MshareF[c] = r-1;
+                                }
+                                else if(i==r-1){
+                                    MshareI[fsize++] = j;
+                                    MshareI[c] = r-1;
+                                }
                             }
                             break;
                             }}}}}
@@ -309,7 +321,6 @@ ________________________________________________________________________________
 
 void RowCorrector(float (*Mx)[c], float (*Mcr), int cRow){
     int i=0;
-    #pragma omp parallel for private(i) shared (Mx,Mcr,cRow,c)
         for(i=0;i<c;i++){
             if(Mcr[i]==1){
                 if(i==0){                                                                                                   //This if statement takes care of the left corner point
@@ -509,7 +520,7 @@ void Infect(float (*Mx)[c], int r, int m,int n, int rank){
             ec = n + 2;
     }
 
-    #pragma omp parallel for private(i,j) shared (tr,tc,er,ec,Mx)
+    //#pragma omp parallel for private(i,j) shared (tr,tc,er,ec,Mx)
     for(i=tr;i<er;i++){
         for(j=tc;j<ec;j++){
             if (Mx[i][j] < 1 ){
