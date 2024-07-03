@@ -153,7 +153,7 @@ ________________________________________________________________________________
                 Infect(M2,r, random_infected, random_infectedc,rank);}}
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------End of Initial Infection------------------------------------------//
-    //printMatrixToFile(M2, r, c, filename);
+    printMatrixToFile(M2, r, c, filename);
     if(size>1){
 //####################################################################Starting the send block###########################################//
         if(rank==0){
@@ -234,6 +234,7 @@ ________________________________________________________________________________
         lsize = 0;
         fsize = 0;
 //############################################################################Reinfection Block#########################################//        
+        printMatrixToFile(M2, r, c, filename);
         //#pragma omp parallel for private(i,per,gen,resilience) shared (M2,M1,MshareF,MshareI,r,c,fsize,lsize)
         for (i = 0; i < r; i++){         
             for(j = 0; j < c; j++){

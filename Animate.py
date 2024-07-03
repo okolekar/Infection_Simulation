@@ -44,7 +44,7 @@ def process_and_plot_combined_matrices(file_paths):
             im = plot_matrix(ax, combined_matrix)
             ims.append([im])
 
-    ani = animation.ArtistAnimation(fig, ims, interval=1000, blit=True)
+    ani = animation.ArtistAnimation(fig, ims, interval=800, blit=True)
     plt.show()
 
 def plot_matrix(ax, matrix):
