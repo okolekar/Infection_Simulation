@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.animation as animation
 import numpy as np
 
 def read_matrices_from_file(file_path):
@@ -10,20 +11,16 @@ def read_matrices_from_file(file_path):
         lines = file.readlines()
 
     for line in lines:
-        # Remove any leading/trailing whitespace and split by semicolon
         row = line.strip().split(';')
 
-        # Check for an empty row
         if all(elem.strip() == '' for elem in row):
             if current_matrix:
                 matrices.append(current_matrix)
                 current_matrix = []
             continue
 
-        # Convert elements to floats (or you can use int if you prefer), skipping empty strings
         current_matrix.append([float(elem.strip()) for elem in row if elem.strip()])
 
-    # Append the last matrix if there's no trailing empty row
     if current_matrix:
         matrices.append(current_matrix)
 
@@ -33,6 +30,9 @@ def process_and_plot_combined_matrices(file_paths):
     all_matrices = [read_matrices_from_file(file_path) for file_path in file_paths]
     max_matrices = max(len(matrices) for matrices in all_matrices)
 
+    fig, ax = plt.subplots()
+
+    ims = []
     for i in range(max_matrices):
         combined_matrix = []
 
@@ -41,23 +41,21 @@ def process_and_plot_combined_matrices(file_paths):
                 combined_matrix.extend(matrices[i])
 
         if combined_matrix:
-            print("Combined Matrix {}:".format(i+1))
-            for row in combined_matrix:
-                print(row)
-            plot_matrix(combined_matrix)
+            im = plot_matrix(ax, combined_matrix)
+            ims.append([im])
 
-def plot_matrix(matrix):
+    ani = animation.ArtistAnimation(fig, ims, interval=1000, blit=True)
+    plt.show()
+
+def plot_matrix(ax, matrix):
     matrix = np.array(matrix)
 
-    # Create a custom colormap
     cmap = mcolors.ListedColormap(['purple', 'yellow'])
     bounds = [0, 0.5, 2]
     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
-    plt.imshow(matrix, cmap=cmap, norm=norm)
-    plt.colorbar(ticks=[0, 1, 2])
-
-    plt.show()
+    im = ax.imshow(matrix, cmap=cmap, norm=norm)
+    return im
 
 file_paths = ['matrix_output_rank_0.txt', 'matrix_output_rank_1.txt', 'matrix_output_rank_2.txt']
 process_and_plot_combined_matrices(file_paths)
