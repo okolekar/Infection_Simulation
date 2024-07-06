@@ -234,7 +234,6 @@ ________________________________________________________________________________
         lsize = 0;
         fsize = 0;
 //############################################################################Reinfection Block#########################################//        
-        //#pragma omp parallel for private(i,per,gen,resilience) shared (M2,M1,MshareF,MshareI,r,c,fsize,lsize)
         for (i = 0; i < r; i++){         
             for(j = 0; j < c; j++){
                 if(M1[i][j]<1){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
@@ -520,7 +519,7 @@ void Infect(float (*Mx)[c], int r, int m,int n, int rank){
             ec = n + 2;
     }
 
-    //#pragma omp parallel for private(i,j) shared (tr,tc,er,ec,Mx)
+    #pragma omp parallel for private(i,j) shared (tr,tc,er,ec,Mx)
     for(i=tr;i<er;i++){
         for(j=tc;j<ec;j++){
             if (Mx[i][j] < 1 ){
