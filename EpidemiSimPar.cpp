@@ -145,7 +145,7 @@ ________________________________________________________________________________
 //------------------------------------------------------------------Initial Infection-----------------------------------------------------//
     int timet = 0;
     int mythread;
-    #pragma omp parallel for private(mythread,i,random_infected,random_infectedc) shared (M2)
+    #pragma omp parallel for private(mythread,i,random_infected,random_infectedc,gen) shared (M2)
         for(i=0;i<5;i++){
             random_infected = distribution(gen);
             random_infectedc = distribution2(gen);
