@@ -5,6 +5,9 @@
 #include <omp.h>
 #include "mpi.h"
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>  
+#include <ctime>    
 
 /*
 ======================================================= ****Universal Constants**** =======================================================
@@ -130,11 +133,12 @@ ________________________________________________________________________________
     }
 //----------------------------------------------------------------------------------------------------------------------------------------//
 
-    std::random_device rd;                                                                // Get a random seed from the device
-    std::mt19937 gen(rd());                                                               // Initialize the Mersenne Twister random number generator
-    std::uniform_int_distribution<> distribution(0, r-1);                                 // Define the distribution (0 to 7 inclusive)
+    auto time_now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    unsigned int seed = static_cast<unsigned int>(time_now*rank);
+    std::mt19937 gen(seed);                                                               // Initialize the Mersenne Twister random number generator
+    std::uniform_int_distribution<int> distribution(0, r-1);                                 
     std::uniform_real_distribution<float> infection_Probability_Distribution(0.0f, 1.0f);
-    std::uniform_int_distribution<> distribution2(0, c-1);                               
+    std::uniform_int_distribution<int> distribution2(0, c-1);                               
                                                                                                                         
     int random_infected = distribution(gen);
     int random_infectedc = distribution2(gen);                                            // Generate a random number
