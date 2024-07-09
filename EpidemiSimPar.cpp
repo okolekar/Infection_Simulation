@@ -196,39 +196,41 @@ ________________________________________________________________________________
 //--------------------------------------------------------------------------------------------------------------------------------------//    
     while(timet<4){
 //##########################################################################Reset Recover and Reimmune##################################//
-        ResetRecoverImmune(M2, r, rank, size, timet);
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(size>1){
-            if(rank == 0){
-                MPI_Recv(MshareI, c+1, MPI_INT,1,112,MPI_COMM_WORLD,&status);
-                if(MshareI[c] != 0){
-                    RowCorrector2(M2[r-1], MshareI, c,rank);
+        if(timet != 0){
+            ResetRecoverImmune(M2, r, rank, size, timet);
+            MPI_Barrier(MPI_COMM_WORLD);
+            if(size>1){
+                if(rank == 0){
+                    MPI_Recv(MshareI, c+1, MPI_INT,1,112,MPI_COMM_WORLD,&status);
+                    if(MshareI[c] != 0){
+                        RowCorrector2(M2[r-1], MshareI, c,rank);
+                    }
+                }
+                else if(rank == size-1){
+                    MPI_Recv(MshareI, c+1, MPI_INT,size-2,112,MPI_COMM_WORLD,&status);
+                    if(MshareI[c] != 0){
+                        RowCorrector2(M2[0], MshareI, c, rank);
+                    }
+                }
+                else{
+                    MPI_Recv(MshareI, c+1, MPI_INT,rank-1,112,MPI_COMM_WORLD,&status);
+                    if(MshareI[c] == 1){
+                        RowCorrector2(M2[r-1], MshareI, c, rank);
+                    }
+                    else if(MshareI[c] == 2){
+                        RowCorrector2(M2[0], MshareI, c, rank);
+                    }
+                    MPI_Recv(MshareI, c+1, MPI_INT,rank+1,112,MPI_COMM_WORLD,&status);
+                    if(MshareI[c] == 1){
+                        RowCorrector2(M2[r-1], MshareI, c, rank);
+                    }
+                    else if(MshareI[c] == 2){
+                        RowCorrector2(M2[0], MshareI, c, rank);
+                    }
                 }
             }
-            else if(rank == size-1){
-                MPI_Recv(MshareI, c+1, MPI_INT,size-2,112,MPI_COMM_WORLD,&status);
-                if(MshareI[c] != 0){
-                    RowCorrector2(M2[0], MshareI, c, rank);
-                }
-            }
-            else{
-                MPI_Recv(MshareI, c+1, MPI_INT,rank-1,112,MPI_COMM_WORLD,&status);
-                if(MshareI[c] == 1){
-                    RowCorrector2(M2[r-1], MshareI, c, rank);
-                }
-                else if(MshareI[c] == 2){
-                    RowCorrector2(M2[0], MshareI, c, rank);
-                }
-                MPI_Recv(MshareI, c+1, MPI_INT,rank+1,112,MPI_COMM_WORLD,&status);
-                if(MshareI[c] == 1){
-                    RowCorrector2(M2[r-1], MshareI, c, rank);
-                }
-                else if(MshareI[c] == 2){
-                    RowCorrector2(M2[0], MshareI, c, rank);
-                }
-            }
-        }
-        MPI_Barrier(MPI_COMM_WORLD); 
+            MPI_Barrier(MPI_COMM_WORLD);
+        } 
         std::fill(MshareF, MshareF + c + 1, 0);   //Mshare for first row
         std::fill(MshareI, MshareI + c + 1, 0); //MshareI for last row
         lsize = 0;
