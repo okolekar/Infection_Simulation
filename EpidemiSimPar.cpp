@@ -60,6 +60,9 @@ void Infect(float (*Mx)[c], int r, int m,int n, int rank);
 void RowCorrector2(float *row, int *index, int c, int rank);
 void RowCorrector3(float *row, int *index, int c, int rank);
 void RowCorrector(float (*Mx)[c], float (*Mcr), int cRow);
+unsigned int custom_lcg(unsigned int seed) {
+    return (1103515245 * seed + 12345) % (1 << 31);
+}
 
 //____________________________________________________ **** End of Declarations **** _____________________________________________________//
 //_______________________________________________________________________________________________________________________________________//
@@ -134,14 +137,16 @@ ________________________________________________________________________________
 //----------------------------------------------------------------------------------------------------------------------------------------//
 
     auto time_now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-    unsigned int seed = static_cast<unsigned int>(time_now*rank);
+    std::random_device rd;
+    unsigned int seed = static_cast<unsigned int>(time_now) ^ (rank + 1) * 101 ^ rd();
     std::mt19937 gen(seed);                                                               // Initialize the Mersenne Twister random number generator
-    std::uniform_int_distribution<int> distribution(0, r-1);                                 
-    std::uniform_real_distribution<float> infection_Probability_Distribution(0.0f, 1.0f);
-    std::uniform_int_distribution<int> distribution2(0, c-1);                               
-                                                                                                                        
-    int random_infected = distribution(gen);
-    int random_infectedc = distribution2(gen);                                            // Generate a random number
+    //std::uniform_int_distribution<int> distribution(0, r-1);
+    //std::uniform_int_distribution<int> distribution2(0, c-1);
+    std::uniform_real_distribution<float> infection_Probability_Distribution(0.0f, 1.0f);                                 
+    unsigned int random_seed = custom_lcg(seed);                                                                                                                                                  
+    int random_infected = random_seed % r;
+    random_seed = custom_lcg(random_seed);
+    int random_infectedc = random_seed % c;                                            // Generate a random number
     float resilience;
     int lsize = 0;
     int fsize = 0;
@@ -151,9 +156,14 @@ ________________________________________________________________________________
     int mythread;
     #pragma omp parallel for private(mythread,i,random_infected,random_infectedc,gen) shared (M2)
         for(i=0;i<5;i++){
-            random_infected = distribution(gen);
-            random_infectedc = distribution2(gen);
+            random_seed = custom_lcg(seed+i);
+            random_infected = random_seed % (r-1);
+            if(random_infected>r-1){random_infected = r-1;}
+            random_seed = custom_lcg(seed+i);
+            random_infectedc = random_seed % (c-1);
+            if(random_infectedc>c-1){random_infectedc = c-1;}
             if(M2[random_infected][random_infectedc]<1){
+                std::cout<<"The seed is "<< seed << " the random_infected and random_infectedc is "<< random_infected << " " << random_infectedc << " and rank is "<< rank << std::endl;
                 Infect(M2,r, random_infected, random_infectedc,rank);}}
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------End of Initial Infection------------------------------------------//
