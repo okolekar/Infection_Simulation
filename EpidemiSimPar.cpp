@@ -91,7 +91,8 @@ The start point of our simulation code.
 ___________________________________________________________________________________________________________________________________________    
 */
     int rank, size,r,i,j,nthreads;
-    MPI_Init(&argc, &argv);
+    int required=1, provided;
+    MPI_Init_thread(&argc,&argv,required,&provided);
     double starttime, endtime;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -99,6 +100,7 @@ ________________________________________________________________________________
     starttime = MPI_Wtime();
     if(rank==0){
         std::cout<<"The Simulation started with total ranks = "<< size <<std::endl;
+        std::cout<<"Level provided: "<<provided<<" and the required level is "<<required<<std::endl; 
     }
     float Mshare[c+1];
     int MshareI[c+1];
@@ -163,7 +165,7 @@ ________________________________________________________________________________
             random_infectedc = random_seed % (c-1);
             if(random_infectedc>c-1){random_infectedc = c-1;}
             if(M2[random_infected][random_infectedc]<1){
-                std::cout<<"The seed is "<< seed << " the random_infected and random_infectedc is "<< random_infected << " " << random_infectedc << " and rank is "<< rank << std::endl;
+                //std::cout<<"The seed is "<< seed << " the random_infected and random_infectedc is "<< random_infected << " " << random_infectedc << " and rank is "<< rank << std::endl;
                 Infect(M2,r, random_infected, random_infectedc,rank);}}
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------End of Initial Infection------------------------------------------//
@@ -208,7 +210,7 @@ ________________________________________________________________________________
     printMatrixToFile(M2, r, c, filename);
     MPI_Barrier(MPI_COMM_WORLD);
 //--------------------------------------------------------------------------------------------------------------------------------------//    
-    while(timet<4){
+    while(timet<1){
 //##########################################################################Reset Recover and Reimmune##################################//
         if(timet != 0){
             ResetRecoverImmune(M2, r, rank, size, timet);
@@ -250,6 +252,7 @@ ________________________________________________________________________________
         lsize = 0;
         fsize = 0;
 //############################################################################Reinfection Block#########################################//        
+        #pragma omp parallel for private(per,i,j,gen,resilience,fsize,lsize,MshareI,MshareF) shared (M2,M1,r,c,rank)
         for (i = 0; i < r; i++){         
             for(j = 0; j < c; j++){
                 if(M1[i][j]<1){  //Passauf. here we used M1 as our reference as infection happens based on the previous time step
